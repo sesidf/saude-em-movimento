@@ -337,10 +337,16 @@ export const useAccessControl = () => {
 
     // Perfis
     const profileRoles = new Map<string, string>();
+    const isRootMap = new Map<string, boolean>();
     if (profilesResult.status === 'fulfilled' && Array.isArray(profilesResult.value.data)) {
       for (const profile of profilesResult.value.data) {
-        if (profile?.id && typeof profile.role === 'string' && profile.role.trim()) {
-          profileRoles.set(profile.id, profile.role.trim().toLowerCase());
+        if (profile?.id) {
+          if (typeof profile.role === 'string' && profile.role.trim()) {
+            profileRoles.set(profile.id, profile.role.trim().toLowerCase());
+          }
+          if (profile.is_root === true) {
+            isRootMap.set(profile.id, true);
+          }
         }
       }
     }
@@ -369,6 +375,7 @@ export const useAccessControl = () => {
       return {
         ...user,
         profile_role: profileRoles.get(user.auth_user_id || user.id) || user.profile_role || null,
+        is_root: isRootMap.get(user.auth_user_id || user.id) || user.is_root || false,
         roles,
         institution_ids: mergedInstIds,
         linked_institutions: directLinked.length > 0 ? directLinked : user.linked_institutions,
