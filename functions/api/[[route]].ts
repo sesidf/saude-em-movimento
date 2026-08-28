@@ -809,13 +809,13 @@ app.post('/system/bootstrap-rbac', async (c) => {
       { resource: 'institutions', action: 'manage', description: 'Gerenciar Cadastro de Instituições' },
       { resource: 'users', action: 'manage', description: 'Gerenciar Usuários' },
       { resource: 'roles', action: 'manage', description: 'Gerenciar Cargos e Permissões' },
-      { resource: 'dashboard', action: 'view', description: 'Visualizar Dashboard/Métricas' },
+      { resource: 'dashboard', action: 'read', description: 'Visualizar Dashboard/Métricas' },
       { resource: 'appointments', action: 'manage', description: 'Gerenciar Consultas (Criar/Editar/Excluir)' },
-      { resource: 'appointments', action: 'view', description: 'Visualizar Consultas' },
+      { resource: 'appointments', action: 'read', description: 'Visualizar Consultas' },
       { resource: 'patients', action: 'manage', description: 'Gerenciar Pacientes' },
-      { resource: 'patients', action: 'view', description: 'Visualizar Pacientes' },
+      { resource: 'patients', action: 'read', description: 'Visualizar Pacientes' },
       { resource: 'medical_records', action: 'manage', description: 'Gerenciar Prontuários' },
-      { resource: 'medical_records', action: 'view', description: 'Visualizar Prontuários' },
+      { resource: 'medical_records', action: 'read', description: 'Visualizar Prontuários' },
     ].map(p => ({ ...p, id: crypto.randomUUID() }));
 
     // 2. Inserir permissões no banco
@@ -827,23 +827,23 @@ app.post('/system/bootstrap-rbac', async (c) => {
     const baseRoles = [
       { 
         key: 'superadmin', name: 'Super Administrador', description: 'Acesso total e irrestrito ao sistema.', is_system: 1,
-        perms: ['institutions.manage', 'users.manage', 'roles.manage', 'dashboard.view', 'appointments.manage', 'appointments.view', 'patients.manage', 'patients.view', 'medical_records.manage', 'medical_records.view']
+        perms: ['institutions.manage', 'users.manage', 'roles.manage', 'dashboard.read', 'appointments.manage', 'appointments.read', 'patients.manage', 'patients.read', 'medical_records.manage', 'medical_records.read']
       },
       {
         key: 'admin', name: 'Administrador da Unidade', description: 'Gestão completa dentro da sua unidade.', is_system: 1,
-        perms: ['users.manage', 'dashboard.view', 'appointments.manage', 'appointments.view', 'patients.manage', 'patients.view']
+        perms: ['users.manage', 'dashboard.read', 'appointments.manage', 'appointments.read', 'patients.manage', 'patients.read']
       },
       {
         key: 'medico', name: 'Médico', description: 'Profissional de saúde que atende pacientes.', is_system: 1,
-        perms: ['dashboard.view', 'appointments.view', 'patients.view', 'medical_records.manage', 'medical_records.view']
+        perms: ['dashboard.read', 'appointments.read', 'patients.read', 'medical_records.manage', 'medical_records.read']
       },
       {
         key: 'recepcao', name: 'Recepcionista', description: 'Focado no agendamento e cadastro de pacientes.', is_system: 1,
-        perms: ['appointments.manage', 'appointments.view', 'patients.manage', 'patients.view']
+        perms: ['appointments.manage', 'appointments.read', 'patients.manage', 'patients.read']
       },
       {
         key: 'auditor', name: 'Auditor', description: 'Auditoria de prontuários e acessos.', is_system: 1,
-        perms: ['dashboard.view', 'medical_records.view']
+        perms: ['dashboard.read', 'medical_records.read']
       },
       {
         key: 'paciente', name: 'Paciente', description: 'Acesso restrito aos próprios dados.', is_system: 1,
