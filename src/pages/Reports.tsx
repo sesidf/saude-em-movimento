@@ -304,30 +304,17 @@ const Reports = () => {
     if (type === 'all') {
       setLoading(true);
       try {
-        let queryFirst = chamarApiPost('/api/table/appointments', {}).select('appointment_date').is('deleted_at', null) as any;
-        let queryLast = chamarApiPost('/api/table/appointments', {}).select('appointment_date').is('deleted_at', null) as any;
+        const { data, error } = await chamarApiPost<any>('/api/appointments/date_range', {
+          institution_id: selectedInstitutions.length === 1 ? selectedInstitutions[0] : null
+        });
 
-        if (selectedInstitutions.length > 0) {
-          queryFirst = queryFirst.in('institution_id', selectedInstitutions);
-          queryLast = queryLast.in('institution_id', selectedInstitutions);
-        }
-        if (selectedSpecialties.length > 0) {
-          queryFirst = queryFirst.in('specialty_id', selectedSpecialties);
-          queryLast = queryLast.in('specialty_id', selectedSpecialties);
-        }
-        if (selectedDoctors.length > 0) {
-          queryFirst = queryFirst.in('doctor_id', selectedDoctors);
-          queryLast = queryLast.in('doctor_id', selectedDoctors);
+        if (error) {
+          throw new Error(error);
         }
 
-        const [firstRes, lastRes] = await Promise.all([
-          queryFirst.order('appointment_date', { ascending: true }).limit(1),
-          queryLast.order('appointment_date', { ascending: false }).limit(1)
-        ]);
-
-        if (firstRes.data?.[0] && lastRes.data?.[0]) {
-          const firstDate = new Date(firstRes.data[0].appointment_date);
-          const lastDate = new Date(lastRes.data[0].appointment_date);
+        if (data && data.first_date && data.last_date) {
+          const firstDate = new Date(data.first_date);
+          const lastDate = new Date(data.last_date);
           if (isValid(firstDate) && isValid(lastDate)) {
             setDateRange({
               from: format(firstDate, 'dd/MM/yyyy'),
@@ -337,6 +324,7 @@ const Reports = () => {
             return;
           }
         }
+
       } catch (err) {
         console.error('Erro ao buscar limites de data:', err);
       } finally {

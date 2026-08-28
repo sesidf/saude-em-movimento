@@ -906,11 +906,12 @@ const Agenda = () => {
           p_search: null,
           p_include_inactive: false,
         }),
-        chamarApiPost('/api/table/doctor_availability', {}).select('doctor_id').eq('is_active', true).is('deleted_at', null),
+        chamarApiPost<any[]>('/api/table/doctor_availability/select', { filters: [{ column: 'is_active', value: 1 }] }),
       ]);
       if (doctorsResponse.error) throw doctorsResponse.error;
 
-      const activeDoctorIds = new Set((activeAvailabilitiesResponse.data || []).map((a: { doctor_id: string }) => a.doctor_id));
+      const activeAvailabilities = ((activeAvailabilitiesResponse.data as any[]) || []).filter((a: any) => a.deleted_at === null);
+      const activeDoctorIds = new Set(activeAvailabilities.map((a: { doctor_id: string }) => a.doctor_id));
       const fullCatalog = Array.isArray(doctorsResponse.data) ? (doctorsResponse.data as DoctorOption[]) : [];
       
       const currentSelectedId = selectedDoctorId || doctorId || '';

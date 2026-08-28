@@ -8,6 +8,8 @@ import { handleInstitutionsRpc } from './rpcs/institutions';
 import { handleDashboardRpc } from './rpcs/dashboard';
 import { handleUsersRpc } from './rpcs/users';
 import { handleAppointmentsRpc } from './rpcs/appointments';
+import { UserRepository } from './repositories/UserRepository';
+import { BaseRepository } from './repositories/BaseRepository';
 
 // Define the bindings for Cloudflare Pages (D1, Env vars)
 type Bindings = {
@@ -109,7 +111,8 @@ app.post('/auth/register', async (c) => {
     }
     
     // Verifica se já existe
-    const existing = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
+    const repo = new UserRepository(c.env.DB);
+    const existing = await repo.findFirst('email = ?', [email]);
     if (existing) {
       return c.json({ error: 'Usuário já existe' }, 400);
     }
@@ -117,9 +120,14 @@ app.post('/auth/register', async (c) => {
     const hashedPwd = await createPasswordHash(password);
     
     // Insere no banco
-    const result = await c.env.DB.prepare(
-      'INSERT INTO users (id, email, full_name, password_hash, auth_status, is_active) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?) RETURNING id'
-    ).bind(email, full_name, hashedPwd, 'active', 1).first();
+    const result: any = await repo.insert({
+      id: crypto.randomUUID().replace(/-/g, '').toLowerCase(), // Simulating randomblob(16) hex
+      email,
+      full_name,
+      password_hash: hashedPwd,
+      auth_status: 'active',
+      is_active: 1
+    });
 
     return c.json({ success: true, message: 'Usuário criado com sucesso', id: result?.id });
   } catch (err) {
@@ -140,7 +148,8 @@ app.post('/auth/sign_in', async (c) => {
     }
 
     // Busca o usuário no D1
-    const user: any = await c.env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
+    const repo = new UserRepository(c.env.DB);
+    const user: any = await repo.findFirst('email = ?', [email]);
     
     if (!user) {
       return c.json({ error: 'Credenciais inválidas' }, 401);
@@ -226,33 +235,26 @@ app.post('/table/:tableName/:operation', async (c) => {
       return c.json({ error: `Tabela ${tableName} não permitida.` }, 403);
     }
 
+    const repo = new BaseRepository(c.env.DB, tableName);
+
     if (operation === 'select') {
-      let query = `SELECT * FROM ${tableName}`;
-      const bindParams: any[] = [];
       const whereClauses: string[] = [];
+      const bindParams: any[] = [];
       
-      // Exemplo básico de mapeamento de filtros .eq() do frontend
       if (body.filters && Array.isArray(body.filters)) {
          body.filters.forEach((f: any) => {
            if (f.column && f.value !== undefined) {
-             // Aceitar operadores no futuro. Por ora, igualdade simples.
              whereClauses.push(`${f.column} = ?`);
              bindParams.push(f.value);
            }
          });
       }
       
-      if (whereClauses.length > 0) {
-        query += ` WHERE ` + whereClauses.join(' AND ');
-      }
-      
-      // Limites
-      if (body.limit) {
-        query += ` LIMIT ?`;
-        bindParams.push(body.limit);
-      }
-
-      const { results, success, error } = await c.env.DB.prepare(query).bind(...bindParams).all();
+      const results = await repo.findMany({
+        where: whereClauses.length > 0 ? whereClauses.join(' AND ') : undefined,
+        params: bindParams,
+        limit: body.limit
+      });
       
       // Edge Caching Inteligente para tabelas que raramente mudam
       const cacheableTables = ['specialties', 'roles', 'institutions'];
@@ -260,7 +262,6 @@ app.post('/table/:tableName/:operation', async (c) => {
         c.header('Cache-Control', 'public, max-age=3600');
       }
       
-      if (!success) throw new Error(error || 'Query fail');
       return c.json({ data: results, error: null });
     }
 
@@ -270,53 +271,45 @@ app.post('/table/:tableName/:operation', async (c) => {
         return c.json({ error: 'Payload de insert ausente' }, 400);
       }
       
-      const keys = Object.keys(payload);
-      const values = Object.values(payload);
-      const placeholders = keys.map(() => '?').join(', ');
-      
-      const query = `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${placeholders}) RETURNING *`;
-      const result = await c.env.DB.prepare(query).bind(...values).first();
-      
+      const result = await repo.insert(payload);
       return c.json({ data: result, error: null });
     }
-    // Outros casos comuns:
+
     if (operation === 'count') {
-      const { results } = await c.env.DB.prepare(`SELECT count(*) as count FROM ${tableName}`).all();
-      return c.json({ data: { count: (results[0] as any).count }, error: null });
+      const count = await repo.count();
+      return c.json({ data: { count }, error: null });
     }
 
     if (operation === 'count_active') {
-      const { results } = await c.env.DB.prepare(`SELECT count(*) as count FROM ${tableName} WHERE is_active = 1`).all();
-      return c.json({ data: { count: (results[0] as any).count }, error: null });
+      const count = await repo.count('is_active = 1');
+      return c.json({ data: { count }, error: null });
     }
 
     if (operation === 'first_date') {
-      let query = `SELECT MIN(appointment_date) as appointment_date FROM ${tableName} WHERE deleted_at IS NULL`;
-      let param = null;
+      let where = `deleted_at IS NULL`;
+      let params: any[] = [];
       if (body?.doctor_id) {
-        query += ` AND doctor_id = ?`;
-        param = body.doctor_id;
+        where += ` AND doctor_id = ?`;
+        params.push(body.doctor_id);
       }
-      const stmt = param ? c.env.DB.prepare(query).bind(param) : c.env.DB.prepare(query);
-      const { results } = await stmt.all();
-      return c.json({ data: { appointment_date: (results[0] as any)?.appointment_date }, error: null });
+      const result: any = await c.env.DB.prepare(`SELECT MIN(appointment_date) as appointment_date FROM ${tableName} WHERE ${where}`).bind(...params).first();
+      return c.json({ data: { appointment_date: result?.appointment_date }, error: null });
     }
 
     if (operation === 'last_date') {
-      let query = `SELECT MAX(appointment_date) as appointment_date FROM ${tableName} WHERE deleted_at IS NULL`;
-      let param = null;
+      let where = `deleted_at IS NULL`;
+      let params: any[] = [];
       if (body?.doctor_id) {
-        query += ` AND doctor_id = ?`;
-        param = body.doctor_id;
+        where += ` AND doctor_id = ?`;
+        params.push(body.doctor_id);
       }
-      const stmt = param ? c.env.DB.prepare(query).bind(param) : c.env.DB.prepare(query);
-      const { results } = await stmt.all();
-      return c.json({ data: { appointment_date: (results[0] as any)?.appointment_date }, error: null });
+      const result: any = await c.env.DB.prepare(`SELECT MAX(appointment_date) as appointment_date FROM ${tableName} WHERE ${where}`).bind(...params).first();
+      return c.json({ data: { appointment_date: result?.appointment_date }, error: null });
     }
 
     if (operation === 'all_active') {
       // Usado para listar os agendamentos ativos
-      const { results } = await c.env.DB.prepare(`SELECT * FROM ${tableName} WHERE status IN ('scheduled', 'confirmed') AND deleted_at IS NULL`).all();
+      const results = await repo.findMany({ where: "status IN ('scheduled', 'confirmed') AND deleted_at IS NULL" });
       return c.json({ data: results, error: null });
     }
 
@@ -498,7 +491,8 @@ app.all('/auth/session', async (c) => {
     const payload = c.get('jwtPayload') as any;
     if (!payload || !payload.id) return c.json({ data: null, error: 'Sessão inválida' }, 401);
     // Busca dados atualizados do usuário
-    const user = await c.env.DB.prepare('SELECT id, email, full_name, is_active, auth_status, primary_institution_id FROM users WHERE id = ?').bind(payload.id).first();
+    const repo = new UserRepository(c.env.DB);
+    const user = await repo.findFirst('id = ?', [payload.id]);
     if (!user || (user as any).is_active === 0) return c.json({ data: null, error: 'Usuário inativo' }, 403);
     return c.json({ data: { user, profile: payload.profile }, error: null });
   } catch (err: any) {

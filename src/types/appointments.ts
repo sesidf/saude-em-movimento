@@ -83,8 +83,9 @@ export interface TimeSlot {
   block_reason?: string | null;
   appointment?: SlotAppointment | null;
   is_out_of_hours?: boolean;
-  /** Indica se este slot é um sub-intervalo derivado de uma consulta em andamento */
   is_subslot?: boolean;
+  institution_id?: string | null;
+  institution_name?: string | null;
 }
 
 
