@@ -169,12 +169,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error(errData.error || 'Erro ao fazer login');
       }
 
-      const data = await res.json();
-      localStorage.setItem('medco_access_token', data.token);
-      localStorage.setItem('medco_user', JSON.stringify(data.user));
+      const payload = await res.json();
+      const sessionData = payload.data?.session || payload;
+      const token = sessionData.access_token || sessionData.token;
+      const user = sessionData.user;
+
+      localStorage.setItem('medco_access_token', token);
+      localStorage.setItem('medco_user', JSON.stringify(user));
       
-      setSession({ access_token: data.token, user: data.user });
-      setUser(data.user);
+      setSession({ access_token: token, user: user });
+      setUser(user);
       
       await fetchAccessContext();
       toast.success('Login realizado com sucesso.');

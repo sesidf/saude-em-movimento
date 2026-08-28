@@ -438,7 +438,7 @@ app.post('/from/:tableName', async (c) => {
 
 // --- AUTH SESSION ROUTE ---
 // Valida se o token JWT ainda é válido e retorna dados do usuário
-app.post('/auth/session', async (c) => {
+app.all('/auth/session', async (c) => {
   try {
     // O middleware JWT já validou o token. Se chegou aqui, está válido.
     const payload = c.get('jwtPayload') as any;
