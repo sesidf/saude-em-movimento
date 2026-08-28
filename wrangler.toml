@@ -10,4 +10,3 @@ database_id = "15b79a73-af88-4219-9e75-fed755fab42e"
 
 [vars]
 JWT_SECRET = "73e167c4f4464beb1e4126fa2843053e1c039ad40021acf3421e0399ec7df84495566a67185afda2c1dba9c136a48a6c0fbb130e5c8c6248bacef014965ed1ed"
-ROOT_EMAIL = "mateus.cotrim@sistemafibra.org.br"
