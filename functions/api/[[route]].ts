@@ -608,6 +608,42 @@ app.post('/admin-create-user', async (c) => {
   }
 });
 
+// --- ADMIN RESET PASSWORD ---
+app.post('/admin-reset-password', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { user_id, password } = body;
+    
+    if (!user_id || !password) {
+      return c.json({ data: null, error: 'user_id e password são obrigatórios' }, 400);
+    }
+    
+    // Authorization check
+    const payload = c.get('jwtPayload') as any;
+    if (!payload || !payload.profile) {
+      return c.json({ data: null, error: 'Não autorizado' }, 401);
+    }
+    
+    const role = payload.profile.role;
+    if (role !== 'superadmin' && role !== 'admin') {
+      return c.json({ data: null, error: 'Sem permissão para redefinir senha' }, 403);
+    }
+
+    const hashedPwd = await createPasswordHash(password);
+    
+    // Update password and set auth_status to pending_auth
+    const result = await c.env.DB.prepare(
+      "UPDATE users SET password_hash = ?, auth_status = 'pending_auth', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    ).bind(hashedPwd, user_id).run();
+    
+    if (!result.success) throw new Error(result.error || 'Falha ao redefinir a senha');
+
+    return c.json({ data: { success: true }, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
 
 // --- APPOINTMENTS EXTRA ROUTES ---
 // Busca range de datas das consultas (usado pelo buscarLimitesConsultas)

@@ -19,6 +19,18 @@ async function obterToken(): Promise<string> {
 const requestCache = new Map<string, { promise: Promise<any>, timestamp: number }>();
 const CACHE_TTL = 5000; // 5 segundos de debounce para requisições idênticas
 
+export function clearApiCache(prefix?: string) {
+  if (!prefix) {
+    requestCache.clear();
+    return;
+  }
+  for (const key of requestCache.keys()) {
+    if (key.startsWith(prefix)) {
+      requestCache.delete(key);
+    }
+  }
+}
+
 export interface ResultadoWorker<T = Record<string, unknown>> {
   data: T | null;
   error: string | null;

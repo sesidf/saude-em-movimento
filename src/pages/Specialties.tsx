@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { chamarApiPost, chamarApiGet } from '@/lib/workerApi';
+import { chamarApiPost, chamarApiGet, clearApiCache } from '@/lib/workerApi';
 import { cn } from '@/lib/utils';
 import { CompactDataGrid, type CompactDataGridColumn } from '@/components/CompactDataGrid';
 import { Button } from '@/components/ui/button';
@@ -186,6 +186,7 @@ const Specialties = () => {
       toast.success(editingSpecialtyId ? 'Especialidade atualizada com sucesso!' : 'Especialidade criada com sucesso!');
       setIsDialogOpen(false);
       resetForm();
+      clearApiCache('/api/rpc/list_specialties_catalog');
       await fetchSpecialties();
     } catch (error: any) {
       console.error('Erro ao salvar especialidade:', error);
@@ -238,6 +239,7 @@ const Specialties = () => {
           : specialty
       )));
       toast.success(isActive ? 'Especialidade desativada' : 'Especialidade ativada');
+      clearApiCache('/api/rpc/list_specialties_catalog');
       await fetchSpecialties();
     } catch (error) {
       console.error('Erro ao alterar status:', error);
