@@ -56,8 +56,8 @@ export default function Users() {
     async function fetchCatalogs() {
       try {
         const [specRes, instRes] = await Promise.allSettled([
-          chamarApiPost('/api/rpc/list_specialties_catalog', { p_search: null, p_include_inactive: false }),
-          chamarApiPost('/api/table/institutions/active', {}),
+          chamarApiPost<any[]>('/api/rpc/list_specialties_catalog', { p_search: null, p_include_inactive: false }),
+          chamarApiPost<any[]>('/api/catalog/institutions', {}),
         ]);
         if (specRes.status === 'fulfilled' && specRes.value.data) {
           setSpecialties(specRes.value.data);
@@ -456,7 +456,7 @@ export default function Users() {
                 const hasDoctorRole = roles.some((r: any) => accessControl.isDoctorRole(r.role_key || ''));
 
                 if (hasDoctorRole) {
-                  const { data: doctorData } = await chamarApiPost('/api/table/doctors/select', {});
+                  const { data: doctorData } = await chamarApiPost<any>('/api/table/doctors/select', {});
 
                   if (doctorData) {
                     const profissionalEdicao = {
