@@ -158,7 +158,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signIn = useCallback(async (email: string, password: string) => {
     explicitSignInInProgressRef.current = true;
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch('/api/auth/sign_in', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
