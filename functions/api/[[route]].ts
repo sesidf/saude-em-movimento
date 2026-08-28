@@ -69,6 +69,9 @@ async function createPasswordHash(password: string): Promise<string> {
 }
 
 // Verifica se a senha em texto puro bate com o hash armazenado
+app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
+app.post('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
+
 async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
   const [saltHex, originalHash] = storedHash.split(':');
   if (!saltHex || !originalHash) return false;
@@ -265,7 +268,47 @@ app.post('/table/:tableName/:operation', async (c) => {
       
       return c.json({ data: result, error: null });
     }
-    
+    // Outros casos comuns:
+    if (operation === 'count') {
+      const { results } = await c.env.DB.prepare(`SELECT count(*) as count FROM ${tableName}`).all();
+      return c.json({ data: { count: (results[0] as any).count }, error: null });
+    }
+
+    if (operation === 'count_active') {
+      const { results } = await c.env.DB.prepare(`SELECT count(*) as count FROM ${tableName} WHERE is_active = 1`).all();
+      return c.json({ data: { count: (results[0] as any).count }, error: null });
+    }
+
+    if (operation === 'first_date') {
+      let query = `SELECT MIN(appointment_date) as appointment_date FROM ${tableName} WHERE deleted_at IS NULL`;
+      let param = null;
+      if (body?.doctor_id) {
+        query += ` AND doctor_id = ?`;
+        param = body.doctor_id;
+      }
+      const stmt = param ? c.env.DB.prepare(query).bind(param) : c.env.DB.prepare(query);
+      const { results } = await stmt.all();
+      return c.json({ data: { appointment_date: (results[0] as any)?.appointment_date }, error: null });
+    }
+
+    if (operation === 'last_date') {
+      let query = `SELECT MAX(appointment_date) as appointment_date FROM ${tableName} WHERE deleted_at IS NULL`;
+      let param = null;
+      if (body?.doctor_id) {
+        query += ` AND doctor_id = ?`;
+        param = body.doctor_id;
+      }
+      const stmt = param ? c.env.DB.prepare(query).bind(param) : c.env.DB.prepare(query);
+      const { results } = await stmt.all();
+      return c.json({ data: { appointment_date: (results[0] as any)?.appointment_date }, error: null });
+    }
+
+    if (operation === 'all_active') {
+      // Usado para listar os agendamentos ativos
+      const { results } = await c.env.DB.prepare(`SELECT * FROM ${tableName} WHERE status IN ('scheduled', 'confirmed') AND deleted_at IS NULL`).all();
+      return c.json({ data: results, error: null });
+    }
+
     // Outros casos: update, delete
     return c.json({ error: `Operação ${operation} não implementada no builder ainda.` }, 501);
     
