@@ -61,6 +61,7 @@ export type AccessUser = {
   primary_institution_id?: string | null;
   profile_role?: string | null;
   is_active: boolean;
+  is_root?: boolean;
   auth_status: 'pending_auth' | 'active' | 'disabled';
   roles?: Array<{
     role_key?: string | null;

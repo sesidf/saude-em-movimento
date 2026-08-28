@@ -660,7 +660,7 @@ export default function Users() {
             </div>
           </TabsContent>
           <TabsContent value="roles_management" className="mt-3">
-            <RolesManagementTab roles={snapshot.roles} />
+            <RolesManagementTab roles={snapshot.roles} accessControl={accessControl} />
           </TabsContent>
         </Tabs>
 

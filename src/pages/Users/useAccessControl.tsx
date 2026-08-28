@@ -50,6 +50,15 @@ const getVisibleRoles = (user: AccessUser | null | undefined) => {
   if (!user) return [] as Array<{ role_key: string; role_name: string; institution_id?: string | null }>;
 
   const roleMap = new Map<string, { role_key: string; role_name: string; institution_id?: string | null }>();
+  
+  if (user.is_root) {
+    roleMap.set('bootstrap:global', {
+      role_key: 'bootstrap',
+      role_name: 'Bootstrap',
+      institution_id: null,
+    });
+  }
+
   for (const role of user.roles || []) {
     const roleKey = typeof role.role_key === 'string' ? role.role_key.trim().toLowerCase() : '';
     if (!roleKey) continue;
