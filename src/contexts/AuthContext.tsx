@@ -116,9 +116,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const currentSession = getStoredSession();
       if (!currentSession.session) throw new Error('No session');
 
-      const response = await fetch('/api/auth/me', {
+      const response = await fetch('/api/auth/session', {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${currentSession.session.access_token}`
+          'Authorization': `Bearer ${currentSession.session.access_token}`,
+          'Content-Type': 'application/json'
         }
       });
       
@@ -126,12 +128,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Falha ao carregar contexto');
       }
 
-      const data = await response.json();
+      const payload = await response.json();
+      const profileData = payload.data?.profile || payload.profile;
       
-      setProfile(data.profile);
+      setProfile(profileData);
       setProfileLoaded(true);
       setConnectionError(false);
-      return data.profile;
+      return profileData;
     } catch (error) {
       setConnectionError(true);
       return null;
