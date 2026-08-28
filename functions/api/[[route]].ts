@@ -15,6 +15,7 @@ import { BaseRepository } from './repositories/BaseRepository';
 type Bindings = {
   DB: any;
   JWT_SECRET: string;
+  ROOT_EMAIL?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
@@ -119,7 +120,6 @@ app.post('/auth/register', async (c) => {
 
     const hashedPwd = await createPasswordHash(password);
     
-    // Insere no banco
     const result: any = await repo.insert({
       id: crypto.randomUUID().replace(/-/g, '').toLowerCase(), // Simulating randomblob(16) hex
       email,
@@ -128,6 +128,13 @@ app.post('/auth/register', async (c) => {
       auth_status: 'active',
       is_active: 1
     });
+
+    if (c.env.ROOT_EMAIL && email === c.env.ROOT_EMAIL) {
+      const superadminRole: any = await new BaseRepository(c.env.DB, '').queryFirst("SELECT id FROM roles WHERE key = 'superadmin'");
+      if (superadminRole) {
+        await new BaseRepository(c.env.DB, '').execute("INSERT INTO user_roles (id, user_id, role_id) VALUES (?, ?, ?)", [crypto.randomUUID().replace(/-/g, '').toLowerCase(), result.id, superadminRole.id]);
+      }
+    }
 
     return c.json({ success: true, message: 'Usuário criado com sucesso', id: result?.id });
   } catch (err) {
@@ -169,31 +176,78 @@ app.post('/auth/sign_in', async (c) => {
       return c.json({ error: 'Credenciais inválidas' }, 401);
     }
 
-    // Busca permissões no banco (tabela auth.users não existe mais, pegamos perfis)
-    // Para simplificar, consideramos "admin" se for o email principal ou mockamos perfil.
-    const mockProfile = {
+    // Busca roles dinâmicas do banco
+    const userRolesQuery = await new BaseRepository(c.env.DB, '').query(`
+      SELECT r.key, r.name, ur.institution_id
+      FROM user_roles ur
+      JOIN roles r ON ur.role_id = r.id
+      WHERE ur.user_id = ?
+    `, [user.id]);
+    const userRoles = userRolesQuery.results || [];
+
+    // Busca permissões dinâmicas amarradas aos cargos
+    const userPermsQuery = await new BaseRepository(c.env.DB, '').query(`
+      SELECT p.resource, p.action, ur.institution_id
+      FROM user_roles ur
+      JOIN role_permissions rp ON ur.role_id = rp.role_id
+      JOIN permissions p ON rp.permission_id = p.id
+      WHERE ur.user_id = ?
+    `, [user.id]);
+    const dbPermissions = userPermsQuery.results || [];
+
+    const isRoot = Boolean(c.env.ROOT_EMAIL && user.email === c.env.ROOT_EMAIL);
+    if (isRoot && !userRoles.find((r: any) => r.key === 'superadmin')) {
+      userRoles.push({ key: 'superadmin', name: 'Super Administrador', institution_id: null });
+    }
+
+    const rolePriority = ['superadmin', 'admin', 'auditor', 'medico', 'recepcao', 'paciente'];
+    let dominantRole = 'paciente';
+    let highestPriority = rolePriority.length;
+
+    for (const r of userRoles as any[]) {
+      const idx = rolePriority.indexOf(r.key);
+      if (idx !== -1 && idx < highestPriority) {
+        highestPriority = idx;
+        dominantRole = r.key;
+      }
+    }
+
+    const allowedRoutes = new Set<string>(['/force-password-change']);
+    if (isRoot) {
+      ['/dashboard', '/patients', '/appointments', '/schedule-management', '/agenda', '/doctors', '/history', '/institutions', '/users', '/specialties', '/reports', '/audit', '/audit-log', '/governance'].forEach(r => allowedRoutes.add(r));
+    } else {
+      const has = (res: string) => dbPermissions.some((p: any) => p.resource === res);
+      if (has('dashboard')) allowedRoutes.add('/dashboard');
+      if (has('patients')) allowedRoutes.add('/patients');
+      if (has('appointments')) {
+        allowedRoutes.add('/appointments');
+        allowedRoutes.add('/schedule-management');
+        allowedRoutes.add('/agenda');
+        allowedRoutes.add('/history');
+      }
+      if (has('doctors')) allowedRoutes.add('/doctors');
+      if (has('institutions')) allowedRoutes.add('/institutions');
+      if (has('users')) allowedRoutes.add('/users');
+      if (has('specialties')) allowedRoutes.add('/specialties');
+      if (has('reports')) allowedRoutes.add('/reports');
+      if (has('audit')) {
+        allowedRoutes.add('/audit');
+        allowedRoutes.add('/audit-log');
+      }
+      if (has('governance')) allowedRoutes.add('/governance');
+    }
+
+    const authProfile = {
       user_id: user.id,
-      role: 'admin',
+      role: dominantRole,
       full_name: user.full_name,
       email: user.email,
       institution_id: user.primary_institution_id,
       institution_ids: user.primary_institution_id ? [user.primary_institution_id] : [],
-      permissions: [
-        { resource: 'patients', action: 'manage', institution_id: user.primary_institution_id },
-        { resource: 'doctors', action: 'manage' },
-        { resource: 'users', action: 'manage' },
-        { resource: 'appointments', action: 'manage' },
-        { resource: 'reports', action: 'manage' },
-        { resource: 'institutions', action: 'manage' },
-        { resource: 'specialties', action: 'manage' },
-        { resource: 'audit', action: 'manage' }
-      ],
-      allowed_routes: [
-        '/dashboard', '/patients', '/appointments', '/schedule-management',
-        '/agenda', '/doctors', '/history', '/institutions', '/users', 
-        '/specialties', '/reports', '/audit', '/audit-log', '/governance', '/force-password-change'
-      ],
-      is_active: true
+      permissions: dbPermissions,
+      allowed_routes: Array.from(allowedRoutes),
+      is_active: true,
+      is_root: isRoot
     };
 
     // Gera o JWT usando Hono/jwt
@@ -201,21 +255,31 @@ app.post('/auth/sign_in', async (c) => {
       {
         id: user.id,
         email: user.email,
-        profile: mockProfile,
+        profile: authProfile,
         exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 // 24 hours
-      },
+      } as any,
       c.env.JWT_SECRET || 'dev-secret-key-change-in-prod'
     );
 
     return c.json({ 
       data: {
-        session: { access_token: token, user: mockProfile }
+        session: { access_token: token, user: authProfile }
       },
       error: null 
     });
   } catch (err: any) {
     console.error(err);
     return c.json({ error: err.message || 'Internal Server Error' }, 500);
+  }
+});
+
+app.post('/auth/session', async (c) => {
+  try {
+    const payload: any = c.get('jwtPayload');
+    if (!payload) return c.json({ error: 'Sessão inválida' }, 401);
+    return c.json({ data: { profile: payload.profile } });
+  } catch (err: any) {
+    return c.json({ error: err.message || 'Error fetching session' }, 500);
   }
 });
 
@@ -292,7 +356,7 @@ app.post('/table/:tableName/:operation', async (c) => {
         where += ` AND doctor_id = ?`;
         params.push(body.doctor_id);
       }
-      const result: any = await c.env.DB.prepare(`SELECT MIN(appointment_date) as appointment_date FROM ${tableName} WHERE ${where}`).bind(...params).first();
+      const result: any = await new BaseRepository(c.env.DB, '').queryFirst(`SELECT MIN(appointment_date) as appointment_date FROM ${tableName} WHERE ${where}`, [...params]);
       return c.json({ data: { appointment_date: result?.appointment_date }, error: null });
     }
 
@@ -303,7 +367,7 @@ app.post('/table/:tableName/:operation', async (c) => {
         where += ` AND doctor_id = ?`;
         params.push(body.doctor_id);
       }
-      const result: any = await c.env.DB.prepare(`SELECT MAX(appointment_date) as appointment_date FROM ${tableName} WHERE ${where}`).bind(...params).first();
+      const result: any = await new BaseRepository(c.env.DB, '').queryFirst(`SELECT MAX(appointment_date) as appointment_date FROM ${tableName} WHERE ${where}`, [...params]);
       return c.json({ data: { appointment_date: result?.appointment_date }, error: null });
     }
 
@@ -325,7 +389,7 @@ app.post('/table/:tableName/:operation', async (c) => {
 
 app.post('/system/prune', async (c) => {
   try {
-    await c.env.DB.prepare("DELETE FROM audit_log WHERE created_at < datetime('now', '-30 days')").run();
+    await new BaseRepository(c.env.DB, '').execute("DELETE FROM audit_log WHERE created_at < datetime('now', '-30 days')");
     return c.json({ success: true, message: 'Prune executado com sucesso' });
   } catch(e: any) {
     return c.json({ error: e.message }, 500);
@@ -391,7 +455,7 @@ app.post('/patients/upsert', async (c) => {
     delete payload.idempotency_key;
     delete payload.tcle_accepted;
 
-    const existing = await c.env.DB.prepare('SELECT id FROM patients WHERE id = ?').bind(payload.id).first();
+    const existing = await new BaseRepository(c.env.DB, '').queryFirst('SELECT id FROM patients WHERE id = ?', [payload.id]);
     const keys = Object.keys(payload).filter(k => k !== 'id');
     let query = '';
     let bind: any[] = [];
@@ -406,7 +470,7 @@ app.post('/patients/upsert', async (c) => {
     }
     const { success, error } = await c.env.DB.prepare(query).bind(...bind).run();
     if (!success) throw new Error(error || 'Upsert failed');
-    // Desativado a pedido: await c.env.DB.prepare("INSERT INTO audit_log (id, table_name, record_id, action, changed_by) VALUES (lower(hex(randomblob(16))), 'patients', ?, ?, 'system')").bind(payload.id, existing ? 'UPDATE' : 'INSERT').run();
+    // Desativado a pedido: await new BaseRepository(c.env.DB, '').execute("INSERT INTO audit_log (id, table_name, record_id, action, changed_by) VALUES (lower(hex(randomblob(16))), 'patients', ?, ?, 'system')", [payload.id, existing ? 'UPDATE' : 'INSERT']);
     return c.json({ data: { success: true, id: payload.id }, error: null });
   } catch (err: any) {
     return c.json({ data: null, error: err.message }, 500);
@@ -418,7 +482,8 @@ app.post('/patients/set_active', async (c) => {
   try {
     const { patient_id, is_active } = await c.req.json();
     if (!patient_id) return c.json({ data: null, error: 'patient_id obrigatório' }, 400);
-    const { success, error } = await c.env.DB.prepare('UPDATE patients SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(is_active ? 1 : 0, patient_id).run();
+    const success = await new BaseRepository(c.env.DB, '').execute('UPDATE patients SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [is_active ? 1 : 0, patient_id]);
+    const error = null;
     if (!success) throw new Error(error || 'Update failed');
     return c.json({ data: { success: true }, error: null });
   } catch (err: any) {
@@ -431,9 +496,10 @@ app.post('/patients/excluir_raiz', async (c) => {
   try {
     const { patient_id, deleted_by } = await c.req.json();
     if (!patient_id) return c.json({ data: null, error: 'patient_id obrigatório' }, 400);
-    const { success, error } = await c.env.DB.prepare("UPDATE patients SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ?, is_active = 0 WHERE id = ?").bind(deleted_by || 'system', patient_id).run();
+    const success = await new BaseRepository(c.env.DB, '').execute("UPDATE patients SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ?, is_active = 0 WHERE id = ?", [deleted_by || 'system', patient_id]);
+    const error = null;
     if (!success) throw new Error(error || 'Delete failed');
-    // Desativado a pedido: await c.env.DB.prepare("INSERT INTO audit_log (id, table_name, record_id, action, changed_by) VALUES (lower(hex(randomblob(16))), 'patients', ?, 'SOFT_DELETE', ?)").bind(patient_id, deleted_by || 'system').run();
+    // Desativado a pedido: await new BaseRepository(c.env.DB, '').execute("INSERT INTO audit_log (id, table_name, record_id, action, changed_by) VALUES (lower(hex(randomblob(16))), 'patients', ?, 'SOFT_DELETE', ?)", [patient_id, deleted_by || 'system']);
     return c.json({ data: { success: true }, error: null });
   } catch (err: any) {
     return c.json({ data: null, error: err.message }, 500);
@@ -461,7 +527,7 @@ app.post('/catalog/doctors', async (c) => {
 app.post('/catalog/specialties', async (c) => {
   try {
     c.header('Cache-Control', 'public, max-age=3600');
-    const { results } = await c.env.DB.prepare('SELECT * FROM specialties WHERE is_active = 1 ORDER BY name ASC').all();
+    const results = await new BaseRepository(c.env.DB, '').query('SELECT * FROM specialties WHERE is_active = 1 ORDER BY name ASC');
     return c.json({ data: results || [], error: null });
   } catch (err: any) {
     return c.json({ data: null, error: err.message }, 500);
@@ -471,7 +537,7 @@ app.post('/catalog/specialties', async (c) => {
 app.post('/catalog/institutions', async (c) => {
   try {
     c.header('Cache-Control', 'public, max-age=3600');
-    const { results } = await c.env.DB.prepare('SELECT * FROM institutions WHERE is_active = 1 AND deleted_at IS NULL ORDER BY name ASC').all();
+    const results = await new BaseRepository(c.env.DB, '').query('SELECT * FROM institutions WHERE is_active = 1 AND deleted_at IS NULL ORDER BY name ASC');
     return c.json({ data: results || [], error: null });
   } catch (err: any) {
     return c.json({ data: null, error: err.message }, 500);
@@ -487,7 +553,7 @@ app.post('/from/:tableName', async (c) => {
     if (!allowedFrom.includes(tableName)) return c.json({ data: null, error: 'Tabela não permitida' }, 403);
     const body = await c.req.json().catch(() => ({}));
     const limit = (body as any).limit || 10000;
-    const { results } = await c.env.DB.prepare(`SELECT * FROM ${tableName} LIMIT ?`).bind(limit).all();
+    const results = await new BaseRepository(c.env.DB, '').query(`SELECT * FROM ${tableName} LIMIT ?`, [limit]);
     return c.json({ data: results || [], error: null });
   } catch (err: any) {
     return c.json({ data: null, error: err.message }, 500);
@@ -520,7 +586,7 @@ app.post('/admin-create-user', async (c) => {
     const { email, password, full_name, phone, institution_id, role_id } = body;
     if (!email || !password || !full_name) return c.json({ data: null, error: 'email, password e full_name são obrigatórios' }, 400);
     // Verifica se já existe
-    const existing = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
+    const existing = await new BaseRepository(c.env.DB, '').queryFirst('SELECT id FROM users WHERE email = ?', [email]);
     if (existing) return c.json({ data: null, error: 'Email já cadastrado' }, 409);
     const hashedPwd = await createPasswordHash(password);
     const userId = crypto.randomUUID();
@@ -529,13 +595,13 @@ app.post('/admin-create-user', async (c) => {
     ).bind(userId, email, full_name, phone || null, hashedPwd, 'active', institution_id || null).run();
     // Vincula à instituição
     if (institution_id) {
-      await c.env.DB.prepare('INSERT INTO user_institutions (id, user_id, institution_id) VALUES (lower(hex(randomblob(16))), ?, ?)').bind(userId, institution_id).run();
+      await new BaseRepository(c.env.DB, '').execute('INSERT INTO user_institutions (id, user_id, institution_id) VALUES (lower(hex(randomblob(16))), ?, ?)', [userId, institution_id]);
     }
     // Atribui role
     if (role_id) {
-      await c.env.DB.prepare('INSERT INTO user_roles (id, user_id, role_id, institution_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?)').bind(userId, role_id, institution_id || null).run();
+      await new BaseRepository(c.env.DB, '').execute('INSERT INTO user_roles (id, user_id, role_id, institution_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?)', [userId, role_id, institution_id || null]);
     }
-    // Desativado a pedido: await c.env.DB.prepare("INSERT INTO audit_log (id, table_name, record_id, action, changed_by) VALUES (lower(hex(randomblob(16))), 'users', ?, 'ADMIN_CREATE', 'admin')").bind(userId).run();
+    // Desativado a pedido: await new BaseRepository(c.env.DB, '').execute("INSERT INTO audit_log (id, table_name, record_id, action, changed_by) VALUES (lower(hex(randomblob(16))), 'users', ?, 'ADMIN_CREATE', 'admin')", [userId]);
     return c.json({ data: { success: true, id: userId }, error: null });
   } catch (err: any) {
     return c.json({ data: null, error: err.message }, 500);
@@ -727,6 +793,94 @@ app.post('/agenda/get_schedule_policy_snapshot', async (c) => {
   }
 });
 
+// --- BOOTSTRAP RBAC ---
+// Rota utilizada apenas para configurar cargos e permissões iniciais.
+// Bloqueada automaticamente se já existirem cargos cadastrados.
+app.post('/system/bootstrap-rbac', async (c) => {
+  try {
+    const db = c.env.DB;
+    const { count } = await new BaseRepository(db, '').queryFirst('SELECT count(*) as count FROM roles') as { count: number };
+    if (count > 0) {
+      return c.json({ data: null, error: 'O sistema já possui cargos. O bootstrap está bloqueado.' }, 403);
+    }
+
+    // 1. Definir permissões disponíveis (Base)
+    const basePermissions = [
+      { resource: 'institutions', action: 'manage', description: 'Gerenciar Cadastro de Instituições' },
+      { resource: 'users', action: 'manage', description: 'Gerenciar Usuários' },
+      { resource: 'roles', action: 'manage', description: 'Gerenciar Cargos e Permissões' },
+      { resource: 'dashboard', action: 'view', description: 'Visualizar Dashboard/Métricas' },
+      { resource: 'appointments', action: 'manage', description: 'Gerenciar Consultas (Criar/Editar/Excluir)' },
+      { resource: 'appointments', action: 'view', description: 'Visualizar Consultas' },
+      { resource: 'patients', action: 'manage', description: 'Gerenciar Pacientes' },
+      { resource: 'patients', action: 'view', description: 'Visualizar Pacientes' },
+      { resource: 'medical_records', action: 'manage', description: 'Gerenciar Prontuários' },
+      { resource: 'medical_records', action: 'view', description: 'Visualizar Prontuários' },
+    ].map(p => ({ ...p, id: crypto.randomUUID() }));
+
+    // 2. Inserir permissões no banco
+    for (const perm of basePermissions) {
+      await new BaseRepository(db, '').execute('INSERT INTO permissions (id, resource, action, description) VALUES (?, ?, ?, ?)', [perm.id, perm.resource, perm.action, perm.description]);
+    }
+
+    // 3. Definir Cargos Base e seus acessos
+    const baseRoles = [
+      { 
+        key: 'superadmin', name: 'Super Administrador', description: 'Acesso total e irrestrito ao sistema.', is_system: 1,
+        perms: ['institutions.manage', 'users.manage', 'roles.manage', 'dashboard.view', 'appointments.manage', 'appointments.view', 'patients.manage', 'patients.view', 'medical_records.manage', 'medical_records.view']
+      },
+      {
+        key: 'admin', name: 'Administrador da Unidade', description: 'Gestão completa dentro da sua unidade.', is_system: 1,
+        perms: ['users.manage', 'dashboard.view', 'appointments.manage', 'appointments.view', 'patients.manage', 'patients.view']
+      },
+      {
+        key: 'medico', name: 'Médico', description: 'Profissional de saúde que atende pacientes.', is_system: 1,
+        perms: ['dashboard.view', 'appointments.view', 'patients.view', 'medical_records.manage', 'medical_records.view']
+      },
+      {
+        key: 'recepcao', name: 'Recepcionista', description: 'Focado no agendamento e cadastro de pacientes.', is_system: 1,
+        perms: ['appointments.manage', 'appointments.view', 'patients.manage', 'patients.view']
+      },
+      {
+        key: 'auditor', name: 'Auditor', description: 'Auditoria de prontuários e acessos.', is_system: 1,
+        perms: ['dashboard.view', 'medical_records.view']
+      },
+      {
+        key: 'paciente', name: 'Paciente', description: 'Acesso restrito aos próprios dados.', is_system: 1,
+        perms: []
+      }
+    ].map(r => ({ ...r, id: crypto.randomUUID() }));
+
+    // 4. Inserir cargos e mapear permissões
+    for (const role of baseRoles) {
+      await new BaseRepository(db, '').execute('INSERT INTO roles (id, key, name, description, is_system) VALUES (?, ?, ?, ?, ?)', [role.id, role.key, role.name, role.description, role.is_system]);
+      
+      for (const permKey of role.perms) {
+        const [res, act] = permKey.split('.');
+        const permId = basePermissions.find(p => p.resource === res && p.action === act)?.id;
+        if (permId) {
+          await new BaseRepository(db, '').execute('INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)', [role.id, permId]);
+        }
+      }
+    }
+
+    // 5. Associar ROOT_EMAIL ao cargo de superadmin (se já existir)
+    if (c.env.ROOT_EMAIL) {
+      const rootUser: any = await new BaseRepository(db, '').queryFirst("SELECT id FROM users WHERE email = ?", [c.env.ROOT_EMAIL]);
+      if (rootUser) {
+        const superRole = baseRoles.find(r => r.key === 'superadmin');
+        if (superRole) {
+          await new BaseRepository(db, '').execute("INSERT INTO user_roles (id, user_id, role_id) VALUES (?, ?, ?)", [crypto.randomUUID().replace(/-/g, '').toLowerCase(), rootUser.id, superRole.id]);
+        }
+      }
+    }
+
+    return c.json({ data: { success: true, message: 'Bootstrap RBAC concluído com sucesso.' }, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
 // --- ROTEADOR CENTRAL DE RPCs ---
 // Substitui completamente os antigos RPCs do PostgreSQL por handlers TypeScript nativos.
 app.post('/rpc/:functionName', async (c) => {
@@ -790,8 +944,8 @@ app.post('/rpc/:functionName', async (c) => {
 export const scheduled = async (event: any, env: Bindings, ctx: any) => {
   console.log('Executando auto-limpeza do banco D1 (Pruning)...');
   try {
-    await env.DB.prepare("DELETE FROM audit_log WHERE created_at < datetime('now', '-30 days')").run();
-    await env.DB.prepare("DELETE FROM system_events WHERE created_at < datetime('now', '-30 days')").run();
+    await new BaseRepository(env.DB, '').execute("DELETE FROM audit_log WHERE created_at < datetime('now', '-30 days')");
+    await new BaseRepository(env.DB, '').execute("DELETE FROM system_events WHERE created_at < datetime('now', '-30 days')");
     console.log('Limpeza concluída.');
   } catch(e) {
     console.error('Erro na limpeza', e);

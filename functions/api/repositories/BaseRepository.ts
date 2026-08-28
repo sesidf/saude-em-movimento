@@ -7,7 +7,7 @@ export class BaseRepository {
     this.tableName = tableName;
   }
 
-  protected async query(sql: string, params: any[] = []) {
+  public async query(sql: string, params: any[] = []) {
     const { results, success, error } = await this.db.prepare(sql).bind(...params).all();
     if (!success) {
       throw new Error(error || `Database error executing query: ${sql}`);
@@ -15,12 +15,12 @@ export class BaseRepository {
     return results;
   }
 
-  protected async queryFirst(sql: string, params: any[] = []) {
+  public async queryFirst(sql: string, params: any[] = []) {
     const result = await this.db.prepare(sql).bind(...params).first();
     return result;
   }
 
-  protected async execute(sql: string, params: any[] = []) {
+  public async execute(sql: string, params: any[] = []) {
     const { success, error } = await this.db.prepare(sql).bind(...params).run();
     if (!success) {
       throw new Error(error || `Database error executing command: ${sql}`);

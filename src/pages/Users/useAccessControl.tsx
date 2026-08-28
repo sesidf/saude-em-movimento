@@ -36,7 +36,6 @@ const ROLE_LABELS: Record<string, string> = {
   paciente: 'Paciente',
 };
 
-const ROOT_SUPERADMIN_ID = '80eb8e53-061c-478e-b687-3e67e2cf1731';
 
 const getRoleLabel = (roleKey?: string | null, roleName?: string | null) => {
   const normalizedRoleName = typeof roleName === 'string' ? roleName.trim() : '';
@@ -80,6 +79,7 @@ const getVisibleRoles = (user: AccessUser | null | undefined) => {
 const userHasRole = (user: AccessUser | null | undefined, roleKey: string) => (
   getVisibleRoles(user)
 ).some((role) => role.role_key === roleKey);
+
 
 const promoteSuperadminViaServer = async (targetUserId: string) => {
   const { data: sessionData, error: sessionError } = await chamarApiPost('/api/auth/session', {});
@@ -616,7 +616,7 @@ export const useAccessControl = () => {
         ?? current?.specialtyId
         ?? doctorRecord?.specialty_id
         ?? '',
-      
+      consultationDuration: partial?.consultationDuration ?? current?.consultationDuration ?? 30,
     };
   }, [assignState, doctorCatalogByUserId]);
 
@@ -648,7 +648,7 @@ export const useAccessControl = () => {
             ?? state?.specialtyId
             ?? doctorRecord?.specialty_id
             ?? '',
-          
+          consultationDuration: partial.consultationDuration ?? state?.consultationDuration ?? 30,
         };
       })(),
     }));
@@ -659,7 +659,7 @@ export const useAccessControl = () => {
   const matrixRoles = permissionMatrix.roles.length > 0 ? permissionMatrix.roles : snapshot.roles;
   const selectedRole = matrixRoles.find((role) => role.id === selectedRoleId) || matrixRoles[0];
   const selectedRoleSummary = getRoleSummary(selectedRole);
-  const isRootSuperadmin = profile?.user_id === ROOT_SUPERADMIN_ID;
+  const isRootSuperadmin = profile?.is_root === true;
   const assignableRoles = useMemo(
     () => getAssignableRoles(snapshot.roles).filter((role) => role.key !== 'superadmin' || isRootSuperadmin),
     [isRootSuperadmin, snapshot.roles],
@@ -732,7 +732,7 @@ export const useAccessControl = () => {
 
   const usersVisibleToViewer = useMemo(() => (
     snapshot.users.filter((item) => (
-      (isRootSuperadmin || item.id !== ROOT_SUPERADMIN_ID)
+      (isRootSuperadmin || !isSuperadminUser(item))
       && !(userRole === 'admin' && isSuperadminUser(item))
     ))
   ), [isRootSuperadmin, snapshot.users, userRole]);
@@ -818,8 +818,8 @@ export const useAccessControl = () => {
       return false;
     }
 
-    if (user.id === ROOT_SUPERADMIN_ID && !isRootSuperadmin) {
-      toast.error('Usuario estrutural protegido nao pode ser gerenciado por este operador.');
+    if (isSuperadminUser(user) && !isRootSuperadmin) {
+      toast.error('Usuário com perfil Superadmin (Root) protegido não pode ser gerenciado por este operador.');
       return false;
     }
 
@@ -864,25 +864,7 @@ export const useAccessControl = () => {
     void loadRoleSupportCatalogs();
   }, [loadRoleSupportCatalogs, snapshotLoaded]);
 
-  useEffect(() => {
-    if (activeAccessTab === 'permissions' && canReadPermissionMatrix && !permissionMatrixLoaded && !permissionMatrixLoading) {
-      void loadPermissionMatrix();
-    }
-  }, [activeAccessTab, canReadPermissionMatrix, loadPermissionMatrix, permissionMatrixLoaded, permissionMatrixLoading]);
 
-  useEffect(() => {
-    if (activeAccessTab === 'effective-access') {
-      void loadAuditEntries();
-    }
-  }, [activeAccessTab, loadAuditEntries]);
-
-  useEffect(() => {
-    if (activeAccessTab === 'effective-access' && selectedUser?.id) {
-      void loadEffectivePermissions(selectedUser.id);
-    } else {
-      setEffectivePermissions([]);
-    }
-  }, [activeAccessTab, loadEffectivePermissions, selectedUser?.id]);
 
   const toggleUserInstitution = (institutionId: string, checked: boolean) => {
     setUserForm((current) => {
@@ -959,9 +941,6 @@ export const useAccessControl = () => {
       await loadSnapshot();
       if (permissionMatrixLoaded) {
         await loadPermissionMatrix();
-      }
-      if (activeAccessTab === 'effective-access' && selectedUser?.id) {
-        await loadEffectivePermissions(selectedUser.id);
       }
       await loadRoleSupportCatalogs();
     } catch (error) {
@@ -1418,9 +1397,7 @@ export const useAccessControl = () => {
       toast.success(enabled ? 'Permissão concedida' : 'Permissão revogada');
       await loadPermissionMatrix();
       await loadSnapshot();
-      if (activeAccessTab === 'effective-access' && selectedUser?.id) {
-        await loadEffectivePermissions(selectedUser.id);
-      }
+
     } catch (error) {
       toast.error(getErrorMessage(error, 'Erro ao atualizar permissão'));
     } finally {

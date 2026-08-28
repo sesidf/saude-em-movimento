@@ -103,16 +103,10 @@ const emptyForm = {
 
 import { useInstitutionsCatalog } from '@/hooks/useCatalogos';
 
-const ROOT_SUPERADMIN_ID = '80eb8e53-061c-478e-b687-3e67e2cf1731';
-
 const Patients = () => {
   const queryClient = useQueryClient();
-  const { hasPermission, institutionId, profile, userRole, user } = useAuth();
-  const isRootSuperadmin = userRole === 'superadmin' && (
-    profile?.user_id === ROOT_SUPERADMIN_ID ||
-    (profile as any)?.id === ROOT_SUPERADMIN_ID ||
-    (user as any)?.id === ROOT_SUPERADMIN_ID
-  );
+  const { hasPermission, institutionId, profile, userRole, user, isRoot } = useAuth();
+  const isRootSuperadmin = isRoot;
   const { confirm, ConfirmationDialog } = useConfirm();
   const location = useLocation();
   const navigate = useNavigate();

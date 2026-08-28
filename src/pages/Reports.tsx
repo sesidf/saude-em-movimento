@@ -156,21 +156,12 @@ const STATUS_OPTIONS = [
   { value: 'em_aberto', label: 'Em Aberto (Pendentes)' },
 ];
 
-const ROOT_SUPERADMIN_ID = '80eb8e53-061c-478e-b687-3e67e2cf1731';
 
 const Reports = () => {
-  const { hasPermission, institutionId, doctorId, userRole, profile, user } = useAuth();
+  const { user, profile, userRole, hasPermission, isRoot, institutionId, doctorId } = useAuth();
   const dateFromRef = useRef<HTMLInputElement>(null);
   const dateToRef = useRef<HTMLInputElement>(null);
-  const isRootSuperadmin = userRole === 'superadmin' && (
-    profile?.user_id === ROOT_SUPERADMIN_ID ||
-    (profile as any)?.id === ROOT_SUPERADMIN_ID ||
-    (user as any)?.id === ROOT_SUPERADMIN_ID ||
-    profile?.email === 'root@sms.med.br' ||
-    profile?.email === 'admin@sms.med.br' ||
-    profile?.email?.includes('root') ||
-    (profile as any)?.is_root === true
-  );
+  const isRootSuperadmin = isRoot;
 
   const [includeInactive, setIncludeInactive] = useState(true);
   const effectiveIncludeInactive = includeInactive;

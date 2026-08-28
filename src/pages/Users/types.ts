@@ -188,4 +188,4 @@ export type AuditEntry = {
   user_email?: string | null;
 };
 
-export type AccessTab = 'users' | 'roles' | 'permissions' | 'effective-access' | 'institutions';
+export type AccessTab = 'users' | 'roles_management' | 'institutions';

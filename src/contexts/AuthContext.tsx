@@ -37,6 +37,7 @@ type UserProfile = {
   is_active: boolean;
   requires_password_change?: boolean;
   preferences?: Record<string, any> | null;
+  is_root?: boolean;
 };
 
 interface AuthContextType {
@@ -65,6 +66,7 @@ interface AuthContextType {
   isAssistidor: () => boolean;
   connectionError: boolean;
   retryAccessContext: () => Promise<void>;
+  isRoot: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -257,6 +259,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const institutionId = profile?.institution_id ?? null;
   const institutionIds = useMemo(() => profile?.institution_ids ?? [], [profile?.institution_ids]);
   const doctorId = profile?.doctor_id ?? null;
+  const isRoot = profile?.is_root ?? false;
 
   const hasRole = useCallback((roles: string[]) => {
     return userRole ? roles.includes(userRole) : false;
@@ -294,13 +297,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     institutionId, institutionIds, doctorId, allowedRoutes, permissions,
     signIn, signUp, signOut, requestPasswordReset, updatePassword,
     refreshAccessContext, updatePreferences, hasRole, hasPermission,
-    canAccessRoute, firstAllowedRoute, isAssistidor, connectionError, retryAccessContext
+    canAccessRoute, firstAllowedRoute, isAssistidor, connectionError, retryAccessContext, isRoot
   }), [
     user, session, loading, profileLoaded, userRole, profile,
     institutionId, institutionIds, doctorId, allowedRoutes, permissions,
     signIn, signUp, signOut, requestPasswordReset, updatePassword,
     refreshAccessContext, updatePreferences, hasRole, hasPermission,
-    canAccessRoute, firstAllowedRoute, isAssistidor, connectionError, retryAccessContext
+    canAccessRoute, firstAllowedRoute, isAssistidor, connectionError, retryAccessContext, isRoot
   ]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

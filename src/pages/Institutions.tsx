@@ -33,12 +33,8 @@ interface Institution {
 }
 
 const Institutions = () => {
-  const { hasPermission, institutionId, userRole, profile, user } = useAuth();
-  const ROOT_SUPERADMIN_ID = "e1610477-7e32-4dc7-88dc-39c84db49ede";
-  const eSuperadminRoot = userRole === "superadmin" && (
-    profile?.user_id === ROOT_SUPERADMIN_ID || 
-    user?.id === ROOT_SUPERADMIN_ID
-  );
+  const { hasPermission, institutionId, userRole, profile, user, isRoot } = useAuth();
+  const eSuperadminRoot = isRoot;
   const { confirm: confirmDialog, ConfirmationDialog } = useConfirm();
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
