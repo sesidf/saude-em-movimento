@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { maskCNPJ, maskPhone } from '@/utils/masks';
+import { maskCNPJ, maskPhone, validateCNPJ } from '@/utils/masks';
 import { normalizarEntradaTexto } from '@/utils/formatters';
 import type { useAccessControl } from '../useAccessControl';
 import { chamarApiPost, chamarApiGet } from '@/lib/workerApi';
@@ -84,7 +84,9 @@ export const CreateInstitutionModal: React.FC<CreateInstitutionModalProps> = ({ 
                         const masked = maskCNPJ(event.target.value);
                         setInstitutionForm({ ...institutionForm, cnpj: masked });
                         const cleanCNPJ = masked.replace(/\D/g, '');
-                        if (cleanCNPJ.length === 14) void fetchInstitutionByCNPJ(cleanCNPJ);
+                        if (cleanCNPJ.length === 14 && validateCNPJ(cleanCNPJ)) {
+                          void fetchInstitutionByCNPJ(cleanCNPJ);
+                        }
                       }}
                       placeholder="00.000.000/0000-00"
                       className="delphi-input bg-slate-50 border-slate-200"

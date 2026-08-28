@@ -499,7 +499,9 @@ const Institutions = () => {
                                   setFormData({ ...formData, cnpj: masked });
                                   setErrors(prev => { const next = { ...prev }; delete next.cnpj; return next; });
                                   const cleanCNPJ = masked.replace(/\D/g, '');
-                                  if (cleanCNPJ.length === 14) void fetchInstitutionByCNPJ(cleanCNPJ);
+                                  if (cleanCNPJ.length === 14 && validateCNPJ(cleanCNPJ)) {
+                                    void fetchInstitutionByCNPJ(cleanCNPJ);
+                                  }
                                 }}
                                 placeholder="00.000.000/0000-00"
                                 className={`delphi-input w-full bg-slate-50 border-slate-200 ${errors.cnpj ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
