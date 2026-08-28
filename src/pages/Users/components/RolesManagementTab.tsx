@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ShieldCheck, Plus, Edit2, ShieldAlert, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { chamarApiPost } from '@/lib/workerApi';
 import type { RoleRow } from '../types';
 
 export function RolesManagementTab({ roles }: { roles: RoleRow[] }) {
@@ -18,10 +19,9 @@ export function RolesManagementTab({ roles }: { roles: RoleRow[] }) {
   const handleBootstrap = async () => {
     try {
       setIsBootstrapping(true);
-      const res = await fetch('/api/system/bootstrap-rbac', { method: 'POST' });
-      const json = await res.json();
-      if (json.error) {
-        toast.error(json.error);
+      const res = await chamarApiPost('/api/system/bootstrap-rbac', {});
+      if (res.error) {
+        toast.error(typeof res.error === 'string' ? res.error : res.error.message || 'Erro desconhecido');
       } else {
         toast.success('Bootstrap executado com sucesso! Atualize a página.');
         // Recarregar a página para atualizar o estado global

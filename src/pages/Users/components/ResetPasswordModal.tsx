@@ -92,27 +92,12 @@ export const ResetPasswordModal: React.FC<ResetPasswordModalProps> = ({
 
     setLoading(true);
     try {
-      const { data: sessionData } = await chamarApiGet('/api/auth/session');
-      const token = sessionData?.token;
-      if (!token) {
-        throw new Error('Sessão expirada. Faça login novamente.');
-      }
-
-      const resposta = await fetch('/api/admin-reset-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          user_id: user.id,
-          password: password,
-        }),
+      const { error } = await chamarApiPost('/api/admin-reset-password', {
+        user_id: user.id,
+        password: password,
       });
-
-      if (!resposta.ok) {
-        const errorData = await resposta.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Erro ao redefinir a senha.');
+      if (error) {
+        throw new Error(typeof error === 'string' ? error : (error as any).message || 'Erro ao redefinir a senha.');
       }
 
       toast.success(

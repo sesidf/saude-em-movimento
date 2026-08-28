@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { toast } from 'sonner';
 import { definirMotivoLogout } from '@/lib/motivoLogout';
 import { getOperationalErrorMessage } from '@/lib/errors';
+import { chamarApiPost } from '@/lib/workerApi';
 
 // Simulated User type to match Cloudflare D1's signature
 export interface User {
@@ -118,20 +119,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const currentSession = getStoredSession();
       if (!currentSession.session) throw new Error('No session');
 
-      const response = await fetch('/api/auth/session', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${currentSession.session.access_token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error('Falha ao carregar contexto');
+      const { data, error } = await chamarApiPost('/api/auth/session', {});
+      if (error) {
+        throw new Error(typeof error === 'string' ? error : (error as any).message || 'Falha ao carregar contexto');
       }
 
-      const payload = await response.json();
-      const profileData = payload.data?.profile || payload.profile;
+      const payloadData: any = data;
+      const profileData = payloadData?.profile || payloadData?.data?.profile;
       
       setProfile(profileData);
       setProfileLoaded(true);
@@ -163,19 +157,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signIn = useCallback(async (email: string, password: string) => {
     explicitSignInInProgressRef.current = true;
     try {
-      const res = await fetch('/api/auth/sign_in', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
-      });
+      const { data, error } = await chamarApiPost('/api/auth/sign_in', { email: email.trim().toLowerCase(), password });
       
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || 'Erro ao fazer login');
+      if (error) {
+        throw new Error(typeof error === 'string' ? error : (error as any).message || 'Erro ao fazer login');
       }
 
-      const payload = await res.json();
-      const sessionData = payload.data?.session || payload;
+      const payloadData: any = data;
+      const sessionData = payloadData?.session || payloadData;
       const token = sessionData.access_token || sessionData.token;
       const user = sessionData.user;
 
@@ -197,13 +186,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signUp = useCallback(async (email: string, password: string, metadata: Record<string, unknown>) => {
     try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, metadata }),
-      });
+      const { error } = await chamarApiPost('/api/auth/register', { email, password, metadata });
       
-      if (!res.ok) throw new Error('Erro ao fazer cadastro');
+      if (error) throw new Error(typeof error === 'string' ? error : (error as any).message || 'Erro ao fazer cadastro');
       toast.success('Cadastro realizado com sucesso.');
     } catch (error: any) {
       toast.error((error as any)?.message || error || 'Erro ao fazer cadastro');
@@ -216,10 +201,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const { session } = getStoredSession();
       if (session) {
-        await fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${session.access_token}` }
-        }).catch(() => {});
+        await chamarApiPost('/api/auth/logout', {});
       }
     } finally {
       clearAuthState();

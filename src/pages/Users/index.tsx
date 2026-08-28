@@ -169,27 +169,11 @@ export default function Users() {
   }, []);
 
   const handleDeleteUser = useCallback(async (userItem: any) => {
-    const { data: sessionData } = await chamarApiGet('/api/auth/session');
-    const token = sessionData?.token;
-    if (!token) {
-      toast.error('Sessão expirada. Faça login novamente.');
-      return;
-    }
-
     setDeleting(true);
     try {
-      const response = await fetch('/api/admin-delete-user', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ user_id: userItem.id }),
-      });
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload.error || 'Erro ao excluir usuário.');
+      const { error } = await chamarApiPost('/api/admin-delete-user', { user_id: userItem.id });
+      if (error) {
+        throw new Error(typeof error === 'string' ? error : (error as any).message || 'Erro ao excluir usuário.');
       }
 
       toast.success('Usuário excluído permanentemente com sucesso!');

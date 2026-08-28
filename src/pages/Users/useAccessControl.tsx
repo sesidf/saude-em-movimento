@@ -82,24 +82,9 @@ const userHasRole = (user: AccessUser | null | undefined, roleKey: string) => (
 
 
 const promoteSuperadminViaServer = async (targetUserId: string) => {
-  const { data: sessionData, error: sessionError } = await chamarApiPost('/api/auth/session', {});
-  const token = sessionData?.token;
-  if (sessionError || !token) {
-    throw new Error(sessionError || 'Sessao expirada. Entre novamente para promover superadministrador.');
-  }
-
-  const response = await fetch('/api/promote-superadmin', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ target_user_id: targetUserId }),
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(typeof payload?.error === 'string' ? payload.error : 'Erro ao promover superadministrador.');
+  const { error } = await chamarApiPost('/api/promote-superadmin', { target_user_id: targetUserId });
+  if (error) {
+    throw new Error(typeof error === 'string' ? error : (error as any).message || 'Erro ao promover superadministrador.');
   }
 };
 
