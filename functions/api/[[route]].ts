@@ -78,8 +78,7 @@ async function verifyPassword(password: string, storedHash: string): Promise<boo
 }
 
 // --- MIDDLEWARES ---
-// Compressão global Brotli/Gzip para economia de banda e performance
-app.use('*', compress());
+// Compressão removida: A própria infraestrutura da Cloudflare já faz compressão Brotli/Gzip nativamente no edge.
 // Protege todas as rotas de API, EXCETO login
 app.use('*', async (c, next) => {
   const url = new URL(c.req.url);
