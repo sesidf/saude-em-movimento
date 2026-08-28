@@ -41,7 +41,7 @@ export function RolesManagementTab({ roles, accessControl }: { roles: RoleRow[],
       setIsBootstrapping(true);
       const res = await chamarApiPost('/api/system/bootstrap-rbac', {});
       if (res.error) {
-        toast.error(typeof res.error === 'string' ? res.error : (res.error as any).message || 'Erro desconhecido');
+        toast.error(res.error);
       } else {
         toast.success('Bootstrap executado com sucesso! Atualize a página.');
         setTimeout(() => window.location.reload(), 1500);
