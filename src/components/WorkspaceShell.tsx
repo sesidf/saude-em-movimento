@@ -115,7 +115,7 @@ const modules: ModuleDef[] = [
   { path: '/specialties', label: 'Especialidades', icon: HeartPulse, group: 'Administração', Component: Specialties },
   { path: '/schedule-management', label: 'Gestão de Agendas', icon: CalendarDays, group: 'Administração', Component: ScheduleManagement },
   { path: '/reports', label: 'Relatórios', icon: PieChart, group: 'Administração', Component: Reports },
-  { path: '/audit-log', label: 'Governança e Auditoria', icon: ShieldCheck, group: 'Administração', Component: AuditLog },
+  // Desativado a pedido: { path: '/audit-log', label: 'Governança e Auditoria', icon: ShieldCheck, group: 'Administração', Component: AuditLog },
 
 
 ];
@@ -354,7 +354,7 @@ const WorkspaceShell = () => {
     try {
       const { data, error } = await chamarApiPost('/api/rpc/get_database_size_stats');
       if (error) throw error;
-      setDbStats(data as DbStats);
+      setDbStats(data as unknown as DbStats);
     } catch (err) {
       console.error('Erro ao buscar estatísticas do banco:', err);
     } finally {

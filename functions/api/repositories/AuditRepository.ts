@@ -15,7 +15,9 @@ export class AuditRepository extends BaseRepository {
       INSERT INTO audit_log (id, table_name, record_id, action, changed_by) 
       VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)
     `;
-    return this.execute(sql, [tableName, recordId, action, changedBy]);
+    // Desativado temporariamente a pedido do usuário
+    // return this.execute(sql, [tableName, recordId, action, changedBy]);
+    return { success: true };
   }
 
   public async pruneOldLogs(days: number = 30) {

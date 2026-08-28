@@ -207,29 +207,7 @@ const AuditLog = () => {
   const handleLoadAllDates = useCallback(async () => {
     try {
       setLoading(true);
-      const tableName = mode === 'events' ? 'system_events' : 'audit_log';
-      const { data: firstRecord } = await cloudflare
-        .from(tableName)
-        .select('created_at')
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-        
-      const { data: lastRecord } = await cloudflare
-        .from(tableName)
-        .select('created_at')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-        
-      if (firstRecord?.created_at && lastRecord?.created_at) {
-        setDateRange({
-          from: format(parseISO(firstRecord.created_at), 'yyyy-MM-dd'),
-          to: format(parseISO(lastRecord.created_at), 'yyyy-MM-dd')
-        });
-      } else {
-        setDateRange({ from: '', to: '' });
-      }
+      setDateRange({ from: '', to: '' });
     } catch (error) {
       console.error('Erro ao buscar datas limites:', error);
       setDateRange({ from: '', to: '' });

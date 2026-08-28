@@ -406,7 +406,7 @@ app.post('/patients/upsert', async (c) => {
     }
     const { success, error } = await c.env.DB.prepare(query).bind(...bind).run();
     if (!success) throw new Error(error || 'Upsert failed');
-    await c.env.DB.prepare("INSERT INTO audit_log (id, table_name, record_id, action, changed_by) VALUES (lower(hex(randomblob(16))), 'patients', ?, ?, 'system')").bind(payload.id, existing ? 'UPDATE' : 'INSERT').run();
+    // Desativado a pedido: await c.env.DB.prepare("INSERT INTO audit_log (id, table_name, record_id, action, changed_by) VALUES (lower(hex(randomblob(16))), 'patients', ?, ?, 'system')").bind(payload.id, existing ? 'UPDATE' : 'INSERT').run();
     return c.json({ data: { success: true, id: payload.id }, error: null });
   } catch (err: any) {
     return c.json({ data: null, error: err.message }, 500);
@@ -433,7 +433,7 @@ app.post('/patients/excluir_raiz', async (c) => {
     if (!patient_id) return c.json({ data: null, error: 'patient_id obrigatório' }, 400);
     const { success, error } = await c.env.DB.prepare("UPDATE patients SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ?, is_active = 0 WHERE id = ?").bind(deleted_by || 'system', patient_id).run();
     if (!success) throw new Error(error || 'Delete failed');
-    await c.env.DB.prepare("INSERT INTO audit_log (id, table_name, record_id, action, changed_by) VALUES (lower(hex(randomblob(16))), 'patients', ?, 'SOFT_DELETE', ?)").bind(patient_id, deleted_by || 'system').run();
+    // Desativado a pedido: await c.env.DB.prepare("INSERT INTO audit_log (id, table_name, record_id, action, changed_by) VALUES (lower(hex(randomblob(16))), 'patients', ?, 'SOFT_DELETE', ?)").bind(patient_id, deleted_by || 'system').run();
     return c.json({ data: { success: true }, error: null });
   } catch (err: any) {
     return c.json({ data: null, error: err.message }, 500);
@@ -535,7 +535,7 @@ app.post('/admin-create-user', async (c) => {
     if (role_id) {
       await c.env.DB.prepare('INSERT INTO user_roles (id, user_id, role_id, institution_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?)').bind(userId, role_id, institution_id || null).run();
     }
-    await c.env.DB.prepare("INSERT INTO audit_log (id, table_name, record_id, action, changed_by) VALUES (lower(hex(randomblob(16))), 'users', ?, 'ADMIN_CREATE', 'admin')").bind(userId).run();
+    // Desativado a pedido: await c.env.DB.prepare("INSERT INTO audit_log (id, table_name, record_id, action, changed_by) VALUES (lower(hex(randomblob(16))), 'users', ?, 'ADMIN_CREATE', 'admin')").bind(userId).run();
     return c.json({ data: { success: true, id: userId }, error: null });
   } catch (err: any) {
     return c.json({ data: null, error: err.message }, 500);
