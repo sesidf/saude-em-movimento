@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
 import { handle } from 'hono/cloudflare-pages';
 import { jwt, sign } from 'hono/jwt';
+import { compress } from 'hono/compress';
 
 // Define the bindings for Cloudflare Pages (D1, Env vars)
 type Bindings = {
-  DB: D1Database;
+  DB: any;
   JWT_SECRET: string;
 };
 
@@ -56,7 +57,7 @@ async function hashPassword(password: string, saltHex: string): Promise<string> 
 // Cria um hash de senha e retorna no formato: salt:hash
 async function createPasswordHash(password: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  const saltHex = buf2hex(salt);
+  const saltHex = buf2hex(salt.buffer);
   const hashHex = await hashPassword(password, saltHex);
   return `${saltHex}:${hashHex}`;
 }
@@ -71,6 +72,8 @@ async function verifyPassword(password: string, storedHash: string): Promise<boo
 }
 
 // --- MIDDLEWARES ---
+// Compressão global Brotli/Gzip para economia de banda e performance
+app.use('*', compress());
 // Protege todas as rotas de API, EXCETO login
 app.use('*', async (c, next) => {
   const url = new URL(c.req.url);
@@ -80,6 +83,7 @@ app.use('*', async (c, next) => {
   
   const jwtMiddleware = jwt({
     secret: c.env.JWT_SECRET || 'dev-secret-key-change-in-prod',
+    alg: 'HS256',
   });
   return jwtMiddleware(c, next);
 });
@@ -231,6 +235,12 @@ app.post('/table/:tableName/:operation', async (c) => {
 
       const { results, success, error } = await c.env.DB.prepare(query).bind(...bindParams).all();
       
+      // Edge Caching Inteligente para tabelas que raramente mudam
+      const cacheableTables = ['specialties', 'roles', 'institutions'];
+      if (cacheableTables.includes(tableName)) {
+        c.header('Cache-Control', 'public, max-age=3600');
+      }
+      
       if (!success) throw new Error(error || 'Query fail');
       return c.json({ data: results, error: null });
     }
@@ -260,9 +270,143 @@ app.post('/table/:tableName/:operation', async (c) => {
   }
 });
 
+
+app.post('/system/prune', async (c) => {
+  try {
+    await c.env.DB.prepare("DELETE FROM audit_log WHERE created_at < datetime('now', '-30 days')").run();
+    return c.json({ success: true, message: 'Prune executado com sucesso' });
+  } catch(e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+
+
+// --- AGENDA ROUTES ---
+
+app.post('/agenda/doctor_availability', async (c) => {
+  try {
+    const { doctor_id, weekday } = await c.req.json();
+    if (!doctor_id || weekday === undefined) return c.json({ data: null, error: 'Parâmetros inválidos' }, 400);
+
+    const query = `
+      SELECT starts_at, ends_at, slot_minutes 
+      FROM doctor_availability 
+      WHERE doctor_id = ? AND weekday = ? AND is_active = 1
+    `;
+    const { results, success, error } = await c.env.DB.prepare(query).bind(doctor_id, weekday).all();
+    
+    if (!success) throw new Error(error || 'Query fail');
+    return c.json({ data: results, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+app.post('/agenda/appointments', async (c) => {
+  try {
+    const { doctor_id, booking_date } = await c.req.json();
+    if (!doctor_id || !booking_date) return c.json({ data: null, error: 'Parâmetros inválidos' }, 400);
+
+    const startDate = `${booking_date}T00:00:00.000Z`;
+    const endDate = `${booking_date}T23:59:59.999Z`;
+
+    const query = `
+      SELECT id, patient_id, specialty_id, institution_id, status, appointment_date, end_date, reason
+      FROM appointments 
+      WHERE doctor_id = ? 
+      AND appointment_date >= ? AND appointment_date <= ?
+      AND status NOT IN ('cancelled')
+    `;
+    const { results, success, error } = await c.env.DB.prepare(query).bind(doctor_id, startDate, endDate).all();
+    
+    if (!success) throw new Error(error || 'Query fail');
+    return c.json({ data: results, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+app.post('/agenda/list_available_appointment_slots', async (c) => {
+  try {
+    const { doctor_id, booking_date, institution_id, patient_id } = await c.req.json();
+    if (!doctor_id || !booking_date) return c.json({ data: null, error: 'Parâmetros inválidos' }, 400);
+
+    // Retornamos array vazio para que o `agendas.ts` frontend faça o processamento de fallback localmente (já implementado lá)
+    return c.json({ data: [], error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+app.post('/agenda/transferir_consultas_profissional', async (c) => {
+  try {
+    const { doctor_id_origem, doctor_id_destino, appointment_ids, motivo } = await c.req.json();
+    if (!doctor_id_origem || !doctor_id_destino || !appointment_ids || !Array.isArray(appointment_ids)) {
+      return c.json({ data: null, error: 'Parâmetros inválidos' }, 400);
+    }
+    
+    // Atualiza multiplos IDs
+    const placeholders = appointment_ids.map(() => '?').join(', ');
+    const query = `UPDATE appointments SET doctor_id = ?, status = 'rescheduled', reason = ? WHERE id IN (${placeholders}) AND doctor_id = ?`;
+    
+    const { success, error } = await c.env.DB.prepare(query).bind(doctor_id_destino, motivo || 'Transferência', ...appointment_ids, doctor_id_origem).run();
+    
+    if (!success) throw new Error(error || 'Update failed');
+    return c.json({ data: { transferred_count: appointment_ids.length, details: [] }, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+app.post('/agenda/reschedule_appointment', async (c) => {
+  try {
+    const { appointment_id, start_at, end_at, reason } = await c.req.json();
+    if (!appointment_id || !start_at) return c.json({ data: null, error: 'Parâmetros inválidos' }, 400);
+    
+    const query = `UPDATE appointments SET appointment_date = ?, end_date = ?, reason = ? WHERE id = ?`;
+    const { success, error } = await c.env.DB.prepare(query).bind(start_at, end_at || null, reason || 'Reagendamento', appointment_id).run();
+    
+    if (!success) throw new Error(error || 'Update failed');
+    return c.json({ data: { success: true }, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+app.post('/agenda/get_schedule_policy_snapshot', async (c) => {
+  try {
+    const { doctor_id, booking_date } = await c.req.json();
+    return c.json({ data: {
+      id: "policy-mock",
+      max_appointments_per_day: 20,
+      allows_overbooking: true,
+      max_overbooking_per_day: 2,
+      min_notice_hours: 24,
+      max_advance_days: 30,
+      block_consecutive_shifts: false,
+      requires_approval: false
+    }, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
 // RPC
 app.post('/rpc/:functionName', async (c) => {
   return c.json({ data: [], error: 'RPC Genérico ainda não implementado' });
 });
+
+
+export const scheduled = async (event: any, env: Bindings, ctx: any) => {
+  console.log('Executando auto-limpeza do banco D1 (Pruning)...');
+  try {
+    await env.DB.prepare("DELETE FROM audit_log WHERE created_at < datetime('now', '-30 days')").run();
+    await env.DB.prepare("DELETE FROM system_events WHERE created_at < datetime('now', '-30 days')").run();
+    console.log('Limpeza concluída.');
+  } catch(e) {
+    console.error('Erro na limpeza', e);
+  }
+};
 
 export const onRequest = handle(app);
