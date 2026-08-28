@@ -1,0 +1,35 @@
+export interface Patient {
+  id: string;
+  user_id?: string | null;
+  institution_id?: string | null;
+  institution_name?: string | null;
+  cpf: string;
+  birth_date: string;
+  gender: string;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+  emergency_contact: string | null;
+  emergency_phone: string | null;
+  blood_type: string | null;
+  allergies: string | null;
+  chronic_diseases: string | null;
+  observations: string | null;
+  is_active: boolean;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  age?: number;
+  has_pending_appointment?: boolean;
+  pending_appointment_id?: string | null;
+  pending_appointment_date?: string | null;
+  pending_appointment_status?: string | null;
+  pending_specialty_name?: string | null;
+  pending_doctor_name?: string | null;
+  tcle_accepted_at?: string | null;
+  is_duplicate_cpf?: boolean;
+  is_duplicate_phone?: boolean;
+  is_duplicate_name_diff_cpf?: boolean;
+  all_pending_appointments?: any[];
+}

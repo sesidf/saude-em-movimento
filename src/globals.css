@@ -1,0 +1,331 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Cores Health System (Blue/Green/Cold) */
+    /* Fundos Gerais */
+    --background: #F4F7FA; /* Fundo principal do sistema */
+    --foreground: #1F2933; /* Texto principal */
+
+    --card: #FFFFFF; /* Painéis brancos */
+    --card-foreground: #1F2933;
+
+    --popover: #FFFFFF;
+    --popover-foreground: #1F2933;
+
+    /* Primários (Botões Ação - Azul Saúde) */
+    --primary: #2563EB;
+    --primary-foreground: #FFFFFF;
+
+    /* Secundários (Botões/Highlights - Azul Claro) */
+    --secondary: #E6F0FF; /* Fundo secundário botão */
+    --secondary-foreground: #2563EB; /* Texto botão secundário */
+
+    /* Muted / Neutral */
+    --muted: #F4F7FA;
+    --muted-foreground: #4B5563;
+
+    /* Accent (Focus/Highlight) */
+    --accent: #2563EB;
+    --accent-foreground: #FFFFFF;
+
+    /* Destructive (Erro - Vermelho Puro) */
+    --destructive: #DC2626;
+    --destructive-foreground: #FFFFFF;
+
+    /* Bordas e Inputs */
+    --border: #E5E7EB; /* Separadores */
+    --input: #CBD5E1; /* Borda padrão input */
+    --ring: #2563EB; /* Focus ring azul saúde */
+
+    --radius: 0.5rem;
+    
+    /* Sidebar / Navegação */
+    --sidebar-background: #0F4C81; /* Azul Corporate */
+    --sidebar-foreground: #FFFFFF;
+    --sidebar-primary: #2563EB;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #1D4ED8;
+    --sidebar-accent-foreground: #FFFFFF;
+    --sidebar-border: #0F4C81;
+    --sidebar-ring: #2563EB;
+  }
+
+  /* Padronização Global: Base harmoniosa, permitindo sobrescritas pontuais por classes utilitárias */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    height: 2.25rem; /* 36px (h-9) — padrão base */
+    font-size: 0.8125rem; /* 13px / text-[13px] */
+    border-radius: 0.5rem;
+  }
+
+  /* Espaçamento elegante e padronizado para o ícone de calendário nativo dos inputs de data */
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    margin-left: 0.25rem; /* 4px */
+    margin-right: 0;
+    opacity: 0.75;
+    transition: opacity 0.2s ease-in-out;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
+
+  /* Textarea tem altura adaptável */
+  textarea {
+    height: auto;
+    min-height: 80px;
+  }
+
+  /* Botões: rounded-lg universal por padrão, exceto checkboxes */
+  button:not([role="checkbox"]):not(.h-auto):not(.h-full):not(.h-7):not(.h-6):not(.h-5):not(.h-8):not([data-compact]) {
+    font-size: 0.8125rem; /* 13px */
+    border-radius: 0.5rem; /* rounded-lg */
+  }
+
+  /* Checkbox retangular clássico */
+  button[role="checkbox"],
+  input[type="checkbox"] {
+    border-radius: 0.25rem !important; /* 4px (retângulo/quadrado elegante) */
+  }
+
+  /* Combobox trigger */
+  [role="combobox"] {
+    border-radius: 0.5rem;
+  }
+
+  /* Altura adaptável e dinâmica para contêineres de opções (Select, Combobox, Multi-Select e Popovers) */
+  [role="listbox"],
+  [cmdk-list],
+  [data-radix-select-viewport],
+  [data-radix-popper-content-wrapper] [role="listbox"] {
+    max-height: 15rem !important; /* 240px - exibe 5 a 6 itens com barra de rolagem ativa */
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+
+  [cmdk-list-sizer],
+  [cmdk-group],
+  [cmdk-group-items] {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* Barra de rolagem estilizada, visível e elegante para dropdowns e listas */
+  [cmdk-list]::-webkit-scrollbar,
+  [role="listbox"]::-webkit-scrollbar,
+  [data-radix-select-viewport]::-webkit-scrollbar {
+    width: 6px !important;
+    display: block !important;
+  }
+
+  [cmdk-list]::-webkit-scrollbar-track,
+  [role="listbox"]::-webkit-scrollbar-track,
+  [data-radix-select-viewport]::-webkit-scrollbar-track {
+    background: #f8fafc !important;
+    border-radius: 4px !important;
+  }
+
+  [cmdk-list]::-webkit-scrollbar-thumb,
+  [role="listbox"]::-webkit-scrollbar-thumb,
+  [data-radix-select-viewport]::-webkit-scrollbar-thumb {
+    background-color: #94a3b8 !important;
+    border-radius: 4px !important;
+  }
+
+  [cmdk-list]::-webkit-scrollbar-thumb:hover,
+  [role="listbox"]::-webkit-scrollbar-thumb:hover,
+  [data-radix-select-viewport]::-webkit-scrollbar-thumb:hover {
+    background-color: #64748b !important;
+  }
+
+  /* Remoção absoluta de qualquer borda azul ou anel azul ao focar ou abrir qualquer input ou seletor */
+  input:focus,
+  input:focus-visible,
+  select:focus,
+  select:focus-visible,
+  textarea:focus,
+  textarea:focus-visible,
+  button:focus,
+  button:focus-visible,
+  [role="combobox"]:focus,
+  [role="combobox"]:focus-visible,
+  [role="combobox"][aria-expanded="true"],
+  [data-state="open"],
+  .delphi-input:focus,
+  .delphi-input:focus-within,
+  .delphi-input[aria-expanded="true"] {
+    outline: none !important;
+    border-color: #CBD5E1 !important; /* Slate-300 neutro suave (SEM AZUL OU PRETO) */
+    box-shadow: none !important;
+  }
+
+  *:focus,
+  *:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  .dark {
+    /* O sistema não está configurado para Dark Mode na UI padrão, 
+       mantendo variáveis básicas para consistência futura. */
+    --background: #1F2933;
+    --foreground: #F4F7FA;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-feature-settings: "cv01", "cv02", "cv03", "cv04", "cv05", "cv11", "tnum";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overflow: hidden;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #94A3B8 #E2E8F0;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: #E2E8F0;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: #94A3B8;
+    border: 2px solid #E2E8F0;
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: #64748B;
+  }
+}
+
+@layer components {
+  /* Estilo Premium Panel */
+  .delphi-panel {
+    @apply bg-white/95 backdrop-blur-sm rounded-xl border border-slate-200/70 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)];
+  }
+
+  .delphi-panel-header {
+    @apply bg-gradient-to-r from-slate-50 to-white border-b border-slate-100 px-5 py-4;
+  }
+
+  .delphi-panel-title {
+    @apply text-[13px] font-bold text-slate-700 tracking-[0.15em] uppercase flex items-center gap-2;
+  }
+
+  .delphi-panel-body {
+    @apply p-6 bg-slate-50/30;
+  }
+
+  /* Inputs Premium Health System */
+  .delphi-input {
+    @apply h-9 rounded-lg border border-slate-200/90 bg-white text-[13px] font-semibold text-slate-800 shadow-xs transition-all duration-200 placeholder:text-slate-400 hover:border-slate-300 focus:border-slate-300 focus:ring-0 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 disabled:border-slate-200;
+  }
+
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@keyframes shake-blink {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+
+.animate-shake {
+  animation: shake-blink 0.35s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+.border-red-500 {
+  border-color: #ef4444 !important;
+  animation: shake-blink 0.3s ease-in-out 2;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15) !important;
+}
+
+@keyframes progress-bar {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-progress-bar {
+  animation: progress-bar 1.5s infinite linear;
+}
+
+/* ─────────────────────────── Otimizações para Notebooks (Telas <= 1368px) ─────────────────────────── */
+@media (max-width: 1368px) {
+  /* Finalidade: Otimizar o aproveitamento de espaço em telas menores de laptop/notebook */
+  
+  /* Reduz o padding interno dos painéis de 24px (p-6) para 16px (p-4) */
+  .delphi-panel-body {
+    padding: 1rem !important;
+  }
+  
+  /* Reduz o cabeçalho dos painéis para acompanhar */
+  .delphi-panel-header {
+    padding: 0.75rem 1rem !important;
+  }
+
+  /* Compacta ligeiramente os campos de texto para ganhar área vertical */
+  .delphi-input,
+  input:not([type="checkbox"]):not([type="radio"]),
+  select {
+    height: 2rem !important; /* 32px (h-8) em vez de 36px */
+    font-size: 0.75rem !important; /* 12px em vez de 13px */
+  }
+
+  /* Compacta botões padrão de ação para acompanhar os inputs */
+  button:not([role="checkbox"]):not(.h-auto):not(.h-full):not(.h-7):not(.h-6):not(.h-5):not(.h-8):not([data-compact]) {
+    height: 2rem !important; /* 32px */
+    font-size: 0.75rem !important;
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+
+  /* Reduz o padding das tabelas densas, permitindo visualizar mais registros sem rolar */
+  td, th {
+    padding-top: 0.5rem !important; /* 8px */
+    padding-bottom: 0.5rem !important;
+    padding-left: 0.625rem !important; /* 10px */
+    padding-right: 0.625rem !important;
+    font-size: 0.75rem !important; /* 12px */
+  }
+}
+
+

@@ -1,0 +1,13 @@
+name = "saude-em-movimento"
+compatibility_date = "2024-03-20"
+pages_build_output_dir = "dist"
+
+# Configuração do D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "saude-em-movimento-db"
+database_id = "00000000-0000-0000-0000-000000000000" # Substituir pelo ID real após criar
+preview_database_id = "DB"
+
+[vars]
+JWT_SECRET = "dev-secret-key-change-in-prod"
