@@ -2,6 +2,12 @@ import { Hono } from 'hono';
 import { handle } from 'hono/cloudflare-pages';
 import { jwt, sign } from 'hono/jwt';
 import { compress } from 'hono/compress';
+import { handlePatientsRpc } from './rpcs/patients';
+import { handleDoctorsRpc } from './rpcs/doctors';
+import { handleInstitutionsRpc } from './rpcs/institutions';
+import { handleDashboardRpc } from './rpcs/dashboard';
+import { handleUsersRpc } from './rpcs/users';
+import { handleAppointmentsRpc } from './rpcs/appointments';
 
 // Define the bindings for Cloudflare Pages (D1, Env vars)
 type Bindings = {
@@ -201,8 +207,8 @@ app.post('/table/:tableName/:operation', async (c) => {
     const operation = c.req.param('operation');
     const body = await c.req.json(); // Pega os filtros do frontend
     
-    // Whitelist basica de tabelas
-    const allowedTables = ['patients', 'appointments', 'doctors', 'institutions', 'users'];
+    // Whitelist completa de tabelas permitidas
+    const allowedTables = ['patients', 'appointments', 'doctors', 'institutions', 'users', 'specialties', 'doctor_availability', 'roles', 'user_roles', 'user_institutions', 'system_events', 'audit_log', 'schedule_blocks', 'encounters', 'medical_record_entries', 'notifications', 'profiles'];
     if (!allowedTables.includes(tableName)) {
       return c.json({ error: `Tabela ${tableName} não permitida.` }, 403);
     }
@@ -280,6 +286,276 @@ app.post('/system/prune', async (c) => {
   }
 });
 
+
+// --- PATIENTS ROUTES ---
+// Rota principal de listagem de pacientes (usada pelo hook usePatients)
+app.post('/patients', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const { search, institution_id, include_inactive, limit } = body as any;
+    let query = 'SELECT * FROM patients WHERE deleted_at IS NULL';
+    const bind: any[] = [];
+    if (!include_inactive) { query += ' AND is_active = 1'; }
+    if (institution_id) { query += ' AND institution_id = ?'; bind.push(institution_id); }
+    if (search) {
+      query += ' AND (full_name LIKE ? OR cpf LIKE ? OR phone LIKE ? OR email LIKE ?)';
+      const s = '%' + search + '%';
+      bind.push(s, s, s, s);
+    }
+    query += ' ORDER BY full_name ASC LIMIT ?';
+    bind.push(limit || 10000);
+    const { results, success, error } = await c.env.DB.prepare(query).bind(...bind).all();
+    if (!success) throw new Error(error || 'Query fail');
+    return c.json({ data: results, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+// Verificar CPF duplicado
+app.post('/patients/check_cpf', async (c) => {
+  try {
+    const { cpf, exclude_id } = await c.req.json();
+    if (!cpf) return c.json({ data: [], error: null });
+    let query = 'SELECT id, full_name FROM patients WHERE cpf = ? AND deleted_at IS NULL';
+    const bind: any[] = [cpf];
+    if (exclude_id) { query += ' AND id != ?'; bind.push(exclude_id); }
+    const { results } = await c.env.DB.prepare(query).bind(...bind).all();
+    return c.json({ data: results || [], error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+// Upsert de paciente
+app.post('/patients/upsert', async (c) => {
+  try {
+    const body = await c.req.json();
+    const payload = body.p_payload || body;
+    if (!payload || !payload.id) return c.json({ data: null, error: 'ID obrigatório' }, 400);
+    const existing = await c.env.DB.prepare('SELECT id FROM patients WHERE id = ?').bind(payload.id).first();
+    const keys = Object.keys(payload).filter(k => k !== 'id');
+    let query = '';
+    let bind: any[] = [];
+    if (existing) {
+      const setClause = keys.map(k => k + ' = ?').join(', ');
+      query = `UPDATE patients SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+      bind = [...keys.map(k => payload[k]), payload.id];
+    } else {
+      const allKeys = Object.keys(payload);
+      query = `INSERT INTO patients (${allKeys.join(', ')}) VALUES (${allKeys.map(() => '?').join(', ')})`;
+      bind = allKeys.map(k => payload[k]);
+    }
+    const { success, error } = await c.env.DB.prepare(query).bind(...bind).run();
+    if (!success) throw new Error(error || 'Upsert failed');
+    await c.env.DB.prepare("INSERT INTO audit_log (id, table_name, record_id, action, changed_by) VALUES (lower(hex(randomblob(16))), 'patients', ?, ?, 'system')").bind(payload.id, existing ? 'UPDATE' : 'INSERT').run();
+    return c.json({ data: { success: true, id: payload.id }, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+// Ativar ou desativar paciente
+app.post('/patients/set_active', async (c) => {
+  try {
+    const { patient_id, is_active } = await c.req.json();
+    if (!patient_id) return c.json({ data: null, error: 'patient_id obrigatório' }, 400);
+    const { success, error } = await c.env.DB.prepare('UPDATE patients SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(is_active ? 1 : 0, patient_id).run();
+    if (!success) throw new Error(error || 'Update failed');
+    return c.json({ data: { success: true }, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+// Exclusão lógica (soft delete) de paciente
+app.post('/patients/excluir_raiz', async (c) => {
+  try {
+    const { patient_id, deleted_by } = await c.req.json();
+    if (!patient_id) return c.json({ data: null, error: 'patient_id obrigatório' }, 400);
+    const { success, error } = await c.env.DB.prepare("UPDATE patients SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ?, is_active = 0 WHERE id = ?").bind(deleted_by || 'system', patient_id).run();
+    if (!success) throw new Error(error || 'Delete failed');
+    await c.env.DB.prepare("INSERT INTO audit_log (id, table_name, record_id, action, changed_by) VALUES (lower(hex(randomblob(16))), 'patients', ?, 'SOFT_DELETE', ?)").bind(patient_id, deleted_by || 'system').run();
+    return c.json({ data: { success: true }, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+
+// --- CATALOG ROUTES (dropdowns rápidos) ---
+app.post('/catalog/doctors', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const { institution_id, specialty_id } = body as any;
+    let query = `SELECT d.id, d.crm, d.specialty_id, u.full_name, u.email FROM doctors d LEFT JOIN users u ON d.user_id = u.id WHERE d.is_active = 1 AND d.deleted_at IS NULL`;
+    const bind: any[] = [];
+    if (specialty_id) { query += ' AND d.specialty_id = ?'; bind.push(specialty_id); }
+    query += ' ORDER BY u.full_name ASC';
+    c.header('Cache-Control', 'public, max-age=60');
+    const { results } = await c.env.DB.prepare(query).bind(...bind).all();
+    return c.json({ data: results || [], error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+app.post('/catalog/specialties', async (c) => {
+  try {
+    c.header('Cache-Control', 'public, max-age=3600');
+    const { results } = await c.env.DB.prepare('SELECT * FROM specialties WHERE is_active = 1 ORDER BY name ASC').all();
+    return c.json({ data: results || [], error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+app.post('/catalog/institutions', async (c) => {
+  try {
+    c.header('Cache-Control', 'public, max-age=3600');
+    const { results } = await c.env.DB.prepare('SELECT * FROM institutions WHERE is_active = 1 AND deleted_at IS NULL ORDER BY name ASC').all();
+    return c.json({ data: results || [], error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+
+// --- FROM ROUTES (busca genérica substituindo o Supabase .from()) ---
+app.post('/from/:tableName', async (c) => {
+  try {
+    const tableName = c.req.param('tableName');
+    const allowedFrom = ['users', 'institutions', 'roles', 'user_roles', 'user_institutions', 'profiles', 'doctors', 'specialties', 'patients'];
+    if (!allowedFrom.includes(tableName)) return c.json({ data: null, error: 'Tabela não permitida' }, 403);
+    const body = await c.req.json().catch(() => ({}));
+    const limit = (body as any).limit || 10000;
+    const { results } = await c.env.DB.prepare(`SELECT * FROM ${tableName} LIMIT ?`).bind(limit).all();
+    return c.json({ data: results || [], error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+
+// --- AUTH SESSION ROUTE ---
+// Valida se o token JWT ainda é válido e retorna dados do usuário
+app.post('/auth/session', async (c) => {
+  try {
+    // O middleware JWT já validou o token. Se chegou aqui, está válido.
+    const payload = c.get('jwtPayload') as any;
+    if (!payload || !payload.id) return c.json({ data: null, error: 'Sessão inválida' }, 401);
+    // Busca dados atualizados do usuário
+    const user = await c.env.DB.prepare('SELECT id, email, full_name, is_active, auth_status, primary_institution_id FROM users WHERE id = ?').bind(payload.id).first();
+    if (!user || (user as any).is_active === 0) return c.json({ data: null, error: 'Usuário inativo' }, 403);
+    return c.json({ data: { user, profile: payload.profile }, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+
+// --- ADMIN CREATE USER ---
+app.post('/admin-create-user', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { email, password, full_name, phone, institution_id, role_id } = body;
+    if (!email || !password || !full_name) return c.json({ data: null, error: 'email, password e full_name são obrigatórios' }, 400);
+    // Verifica se já existe
+    const existing = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
+    if (existing) return c.json({ data: null, error: 'Email já cadastrado' }, 409);
+    const hashedPwd = await createPasswordHash(password);
+    const userId = crypto.randomUUID();
+    await c.env.DB.prepare(
+      'INSERT INTO users (id, email, full_name, phone, password_hash, auth_status, is_active, primary_institution_id) VALUES (?, ?, ?, ?, ?, ?, 1, ?)'
+    ).bind(userId, email, full_name, phone || null, hashedPwd, 'active', institution_id || null).run();
+    // Vincula à instituição
+    if (institution_id) {
+      await c.env.DB.prepare('INSERT INTO user_institutions (id, user_id, institution_id) VALUES (lower(hex(randomblob(16))), ?, ?)').bind(userId, institution_id).run();
+    }
+    // Atribui role
+    if (role_id) {
+      await c.env.DB.prepare('INSERT INTO user_roles (id, user_id, role_id, institution_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?)').bind(userId, role_id, institution_id || null).run();
+    }
+    await c.env.DB.prepare("INSERT INTO audit_log (id, table_name, record_id, action, changed_by) VALUES (lower(hex(randomblob(16))), 'users', ?, 'ADMIN_CREATE', 'admin')").bind(userId).run();
+    return c.json({ data: { success: true, id: userId }, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+
+// --- APPOINTMENTS EXTRA ROUTES ---
+// Busca range de datas das consultas (usado pelo buscarLimitesConsultas)
+app.post('/appointments/date_range', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const institution_id = (body as any).institution_id || null;
+    let query = 'SELECT MIN(appointment_date) as first_date, MAX(appointment_date) as last_date FROM appointments WHERE deleted_at IS NULL';
+    const bind: any[] = [];
+    if (institution_id) { query += ' AND institution_id = ?'; bind.push(institution_id); }
+    const result = await c.env.DB.prepare(query).bind(...bind).first();
+    return c.json({ data: result, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+// Busca consultas para transferência entre médicos
+app.post('/agenda/appointments_for_transfer', async (c) => {
+  try {
+    const { doctor_id, start_date, end_date, status_filter } = await c.req.json();
+    if (!doctor_id) return c.json({ data: null, error: 'doctor_id obrigatório' }, 400);
+    let query = `
+      SELECT a.id, a.appointment_date, a.end_date, a.status, a.reason,
+             p.full_name as patient_name, p.phone as patient_phone
+      FROM appointments a
+      LEFT JOIN patients p ON a.patient_id = p.id
+      WHERE a.doctor_id = ? AND a.deleted_at IS NULL AND a.status NOT IN ('cancelled', 'completed')
+    `;
+    const bind: any[] = [doctor_id];
+    if (start_date) { query += ' AND a.appointment_date >= ?'; bind.push(start_date); }
+    if (end_date) { query += ' AND a.appointment_date <= ?'; bind.push(end_date); }
+    query += ' ORDER BY a.appointment_date ASC';
+    const { results } = await c.env.DB.prepare(query).bind(...bind).all();
+    return c.json({ data: results || [], error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+
+// --- CNPJ LOOKUP (consulta Receita Federal) ---
+app.post('/functions/fetch-cnpj', async (c) => {
+  try {
+    const { cnpj } = await c.req.json();
+    if (!cnpj) return c.json({ data: null, error: 'CNPJ obrigatório' }, 400);
+    const cnpjClean = cnpj.replace(/\D/g, '');
+    if (cnpjClean.length !== 14) return c.json({ data: null, error: 'CNPJ inválido' }, 400);
+    // Cloudflare Workers suporta fetch() nativo para chamadas externas
+    const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjClean}`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!response.ok) return c.json({ data: null, error: 'CNPJ não encontrado' }, 404);
+    const cnpjData = await response.json() as any;
+    return c.json({
+      data: {
+        razao_social: cnpjData.razao_social,
+        nome_fantasia: cnpjData.nome_fantasia,
+        email: cnpjData.email,
+        ddd_telefone_1: cnpjData.ddd_telefone_1,
+        logradouro: cnpjData.logradouro,
+        numero: cnpjData.numero,
+        bairro: cnpjData.bairro,
+        municipio: cnpjData.municipio,
+        uf: cnpjData.uf,
+        cep: cnpjData.cep,
+      },
+      error: null
+    });
+  } catch (err: any) {
+    return c.json({ data: null, error: 'Erro ao consultar CNPJ: ' + err.message }, 500);
+  }
+});
 
 
 // --- AGENDA ROUTES ---
@@ -392,9 +668,63 @@ app.post('/agenda/get_schedule_policy_snapshot', async (c) => {
   }
 });
 
-// RPC
+// --- ROTEADOR CENTRAL DE RPCs ---
+// Substitui completamente os antigos RPCs do PostgreSQL por handlers TypeScript nativos.
 app.post('/rpc/:functionName', async (c) => {
-  return c.json({ data: [], error: 'RPC Genérico ainda não implementado' });
+  try {
+    const functionName = c.req.param('functionName');
+    const params = await c.req.json().catch(() => ({}));
+    const env = c.env;
+
+    // Módulo: Pacientes
+    const patientsRpcs = ['list_patients_catalog', 'upsert_patient'];
+    if (patientsRpcs.includes(functionName)) {
+      const result = await handlePatientsRpc(env, functionName, params);
+      return c.json(result);
+    }
+
+    // Módulo: Profissionais e Especialidades
+    const doctorsRpcs = ['list_doctors_catalog', 'set_doctor_active', 'list_specialties_catalog', 'upsert_specialty', 'set_specialty_active'];
+    if (doctorsRpcs.includes(functionName)) {
+      const result = await handleDoctorsRpc(env, functionName, params);
+      return c.json(result);
+    }
+
+    // Módulo: Instituições
+    const institutionsRpcs = ['list_institutions_catalog', 'get_all_institutions_catalog', 'upsert_institution', 'set_institution_active', 'api_excluir_instituicao'];
+    if (institutionsRpcs.includes(functionName)) {
+      const result = await handleInstitutionsRpc(env, functionName, params);
+      return c.json(result);
+    }
+
+    // Módulo: Dashboard, Histórico, Logs
+    const dashboardRpcs = ['get_dashboard_bi_snapshot', 'get_dashboard_snapshot', 'list_history_snapshot', 'list_system_events_snapshot', 'list_audit_log_snapshot', 'api_clear_audit_and_system_logs', 'list_notifications_snapshot', 'get_database_size_stats', 'get_reports_catalog', 'generate_operational_report_snapshot'];
+    if (dashboardRpcs.includes(functionName)) {
+      const result = await handleDashboardRpc(env, functionName, params);
+      return c.json(result);
+    }
+
+    // Módulo: Usuários e Controle de Acesso
+    const usersRpcs = ['get_access_control_snapshot', 'get_user_effective_permissions', 'set_user_active', 'link_user_institution', 'sync_user_institutions', 'set_user_access_profile', 'set_user_operational_profile', 'get_permissions_matrix', 'get_my_access_context', 'confirm_password_change'];
+    if (usersRpcs.includes(functionName)) {
+      const result = await handleUsersRpc(env, functionName, params);
+      return c.json(result);
+    }
+
+    // Módulo: Consultas e Agenda
+    const appointmentsRpcs = ['list_appointments_snapshot', 'api_schedule_appointment', 'api_set_appointment_status', 'api_reschedule_appointment', 'api_start_encounter', 'api_finalize_encounter', 'api_reorganize_schedule_conflicts', 'get_patient_scheduling_guard', 'get_schedule_admin_snapshot', 'api_set_doctor_availability', 'api_archive_schedule_block', 'importar_dados_planilha', 'add_medical_record_entry', 'api_create_schedule_block', 'api_clear_all_schedule_blocks', 'list_patients_catalog'];
+    if (appointmentsRpcs.includes(functionName)) {
+      const result = await handleAppointmentsRpc(env, functionName, params);
+      return c.json(result);
+    }
+
+    // Fallback seguro para RPCs não mapeadas
+    console.warn(`[RPC] Função não mapeada: ${functionName}`);
+    return c.json({ data: null, error: `Função '${functionName}' não encontrada` }, 404);
+  } catch (err: any) {
+    console.error('[RPC] Erro:', err);
+    return c.json({ data: null, error: err.message || 'Erro interno' }, 500);
+  }
 });
 
 

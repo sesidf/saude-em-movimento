@@ -1,13 +1,15 @@
 name = "saude-em-movimento"
-compatibility_date = "2024-03-20"
+compatibility_date = "2026-08-28"
 pages_build_output_dir = "dist"
 
 # Configuração do D1 Database
 [[d1_databases]]
 binding = "DB"
-database_name = "saude-em-movimento-db"
-database_id = "00000000-0000-0000-0000-000000000000" # Substituir pelo ID real após criar
-preview_database_id = "DB"
+database_name = "db_sem"
+database_id = "15b79a73-af88-4219-9e75-fed755fab42e" 
 
 [vars]
-JWT_SECRET = "dev-secret-key-change-in-prod"
+JWT_SECRET = "73e167c4f4464beb1e4126fa2843053e1c039ad40021acf3421e0399ec7df84495566a67185afda2c1dba9c136a48a6c0fbb130e5c8c6248bacef014965ed1ed"
+
+[triggers]
+crons = ["0 3 * * *"] # Roda toda madrugada as 03:00 UTC para fazer a auto-limpeza do banco

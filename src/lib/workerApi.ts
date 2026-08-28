@@ -14,6 +14,11 @@ async function obterToken(): Promise<string> {
 /**
  * Resultado padrão de uma chamada ao Cloudflare Worker API.
  */
+
+// Cache em memória para deduplicação de requisições repetitivas no Frontend
+const requestCache = new Map<string, { promise: Promise<any>, timestamp: number }>();
+const CACHE_TTL = 5000; // 5 segundos de debounce para requisições idênticas
+
 export interface ResultadoWorker<T = Record<string, unknown>> {
   data: T | null;
   error: string | null;
@@ -32,6 +37,18 @@ export async function chamarApiPost<T = Record<string, unknown>>(
   corpo: unknown = {},
   tentativasMaximas = 3
 ): Promise<ResultadoWorker<T>> {
+  
+  // Deduplicação de chamadas idênticas
+  const cacheKey = rota + JSON.stringify(corpo);
+  const now = Date.now();
+  const cached = requestCache.get(cacheKey);
+  
+  if (cached && now - cached.timestamp < CACHE_TTL) {
+    return cached.promise;
+  }
+
+  const executeFetch = async () => {
+
   const token = await obterToken();
   if (!token) {
     return { data: null, error: 'Sessão expirada. Faça login novamente.' };
@@ -90,7 +107,22 @@ export async function chamarApiPost<T = Record<string, unknown>>(
           : erroMensagem,
       };
     }
-  }
+
+    }
+  };
+
+  const fetchPromise = executeFetch();
+  requestCache.set(cacheKey, { promise: fetchPromise, timestamp: now });
+  
+  // Limpeza do cache
+  fetchPromise.finally(() => {
+    setTimeout(() => {
+      requestCache.delete(cacheKey);
+    }, CACHE_TTL);
+  });
+
+  return fetchPromise;
+
 }
 
 /**
