@@ -116,7 +116,7 @@ app.post('/auth/register', async (c) => {
     
     // Insere no banco
     const result = await c.env.DB.prepare(
-      'INSERT INTO users (email, full_name, password_hash, auth_status, is_active) VALUES (?, ?, ?, ?, ?) RETURNING id'
+      'INSERT INTO users (id, email, full_name, password_hash, auth_status, is_active) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?) RETURNING id'
     ).bind(email, full_name, hashedPwd, 'active', 1).first();
 
     return c.json({ success: true, message: 'Usuário criado com sucesso', id: result?.id });
