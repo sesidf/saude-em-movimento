@@ -9,7 +9,22 @@ export const handleInstitutionsRpc = async (env: any, functionName: string, para
   }
 
   if (functionName === 'upsert_institution') {
-    const data = await repo.upsert(params.p_payload);
+    const payloadId = params.p_institution_id || crypto.randomUUID();
+    const payload = params.p_payload || {
+      id: payloadId,
+      name: params.p_name,
+      cnpj: params.p_cnpj,
+      email: params.p_email,
+      phone: params.p_phone,
+      address: params.p_address,
+      city: params.p_city,
+      state: params.p_state,
+      is_active: params.p_is_active
+    };
+    // Ensure id is present even if p_payload was provided but without id
+    if (!payload.id) payload.id = payloadId;
+    
+    const data = await repo.upsert(payload);
     return { data, error: null };
   }
   

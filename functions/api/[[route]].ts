@@ -378,7 +378,19 @@ app.post('/patients/upsert', async (c) => {
   try {
     const body = await c.req.json();
     const payload = body.p_payload || body;
-    if (!payload || !payload.id) return c.json({ data: null, error: 'ID obrigatório' }, 400);
+    
+    if (payload.patient_id !== undefined && !payload.id) {
+      payload.id = payload.patient_id;
+    }
+    
+    if (!payload.id) {
+      payload.id = crypto.randomUUID();
+    }
+    
+    delete payload.patient_id;
+    delete payload.idempotency_key;
+    delete payload.tcle_accepted;
+
     const existing = await c.env.DB.prepare('SELECT id FROM patients WHERE id = ?').bind(payload.id).first();
     const keys = Object.keys(payload).filter(k => k !== 'id');
     let query = '';
