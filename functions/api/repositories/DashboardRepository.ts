@@ -52,7 +52,7 @@ export class DashboardRepository extends BaseRepository {
         a.id, a.appointment_date, a.status, a.reason,
         u.full_name as doctor_name,
         s.name as specialty_name,
-        e.notes, e.diagnosis, e.treatment_plan, e.finalized_at
+        a.notes, a.diagnosis, a.prescription as treatment_plan, e.finalized_at
       FROM appointments a
       LEFT JOIN doctors d ON a.doctor_id = d.id
       LEFT JOIN users u ON d.user_id = u.id

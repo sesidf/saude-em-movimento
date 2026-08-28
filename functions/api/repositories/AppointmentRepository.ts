@@ -82,10 +82,15 @@ export class AppointmentRepository extends BaseRepository {
 
   public async finalizeEncounter(appointmentId: string, notes: string | null, diagnosis: string | null, treatmentPlan: string | null) {
     await this.execute(
-      "UPDATE encounters SET notes = ?, diagnosis = ?, treatment_plan = ?, finalized_at = CURRENT_TIMESTAMP WHERE appointment_id = ?",
-      [notes || null, diagnosis || null, treatmentPlan || null, appointmentId]
+      "UPDATE encounters SET finalized_at = CURRENT_TIMESTAMP, status = 'finalizado' WHERE appointment_id = ?",
+      [appointmentId]
     );
-    await this.update(appointmentId, { status: 'completed' });
+    await this.update(appointmentId, { 
+      status: 'completed',
+      notes: notes || null,
+      diagnosis: diagnosis || null,
+      prescription: treatmentPlan || null
+    });
     return { success: true };
   }
 
