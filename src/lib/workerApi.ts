@@ -81,6 +81,13 @@ export async function chamarApiPost<T = Record<string, unknown>>(
         return { data: null, error: mensagem };
       }
 
+      if (dados && ('data' in dados || 'error' in dados)) {
+        return { 
+          data: (dados.data !== undefined ? dados.data : null) as T, 
+          error: (typeof dados.error === 'string' ? dados.error : null) 
+        };
+      }
+
       return { data: dados as T, error: null };
     } catch (erro) {
       const erroMensagem = erro instanceof Error ? (erro as any)?.message || erro : 'Erro de rede.';
@@ -180,6 +187,13 @@ export async function chamarApiGet<T = Record<string, unknown>>(
         else if (typeof dados.message === 'string') mensagem = dados.message;
         else if (typeof dados.details === 'string') mensagem = dados.details;
         return { data: null, error: mensagem };
+      }
+
+      if (dados && ('data' in dados || 'error' in dados)) {
+        return { 
+          data: (dados.data !== undefined ? dados.data : null) as T, 
+          error: (typeof dados.error === 'string' ? dados.error : null) 
+        };
       }
 
       return { data: dados as T, error: null };
