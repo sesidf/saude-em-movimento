@@ -19,7 +19,15 @@ export const handleDoctorsRpc = async (env: any, functionName: string, params: a
   }
 
   if (functionName === 'upsert_specialty') {
-    const data = await repo.upsertSpecialty(params.p_payload);
+    const payload = params.p_payload || {
+      id: params.p_specialty_id || crypto.randomUUID(),
+      name: params.p_name,
+      description: params.p_description,
+      icon: params.p_icon,
+      color: params.p_color,
+      is_active: params.p_is_active
+    };
+    const data = await repo.upsertSpecialty(payload);
     return { data, error: null };
   }
   

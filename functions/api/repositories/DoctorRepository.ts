@@ -46,17 +46,21 @@ export class DoctorRepository extends BaseRepository {
     const existing = await this.queryFirst("SELECT id FROM specialties WHERE id = ?", [payload.id]);
     
     if (existing) {
-      await this.execute("UPDATE specialties SET name = ?, description = ?, is_active = ? WHERE id = ?", [
+      await this.execute("UPDATE specialties SET name = ?, description = ?, icon = ?, color = ?, is_active = ? WHERE id = ?", [
         payload.name,
         payload.description,
+        payload.icon,
+        payload.color,
         payload.is_active ? 1 : 0,
         payload.id
       ]);
     } else {
-      await this.execute("INSERT INTO specialties (id, name, description, is_active) VALUES (?, ?, ?, ?)", [
+      await this.execute("INSERT INTO specialties (id, name, description, icon, color, is_active) VALUES (?, ?, ?, ?, ?, ?)", [
         payload.id,
         payload.name,
         payload.description,
+        payload.icon,
+        payload.color,
         payload.is_active ? 1 : 0
       ]);
     }
@@ -65,6 +69,6 @@ export class DoctorRepository extends BaseRepository {
 
   public async setSpecialtyActive(specialtyId: string, isActive: boolean) {
     await this.execute("UPDATE specialties SET is_active = ? WHERE id = ?", [isActive ? 1 : 0, specialtyId]);
-    return { success: true };
+    return { success: true, specialty: { is_active: isActive } };
   }
 }
