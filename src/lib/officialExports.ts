@@ -141,7 +141,7 @@ const gerarExcelClienteSide = async (report: OfficialReport): Promise<Blob> => {
   });
 
   const wb = XLSX.utils.book_new();
-  const sheetName = (report.title || 'Relatorio').slice(0, 31).replace(/[:\\\/\?\*\[\]]/g, '-');
+  const sheetName = (report.title || 'Relatorio').slice(0, 31).replace(/[:\\/?*[\]]/g, '-');
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
   const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });

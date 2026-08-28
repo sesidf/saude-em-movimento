@@ -187,7 +187,9 @@ export const handleAppointmentsRpc = async (env: any, functionName: string, para
         const placeholders = keys.map(() => '?').join(', ');
         await env.DB.prepare(`INSERT OR IGNORE INTO ${p_table} (${keys.join(', ')}) VALUES (${placeholders})`).bind(...vals).run();
         imported++;
-      } catch (_) {}
+      } catch (_) {
+        // Ignora erros individuais ao inserir (e.g. duplicação)
+      }
     }
     return { data: { imported }, error: null };
   }

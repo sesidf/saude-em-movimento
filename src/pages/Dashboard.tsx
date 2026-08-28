@@ -1760,7 +1760,7 @@ const Dashboard = () => {
   } } = useQuery({
     queryKey: ['dashboard-stats', profile?.user_id, profile?.role, profile?.doctor_id],
     queryFn: async () => {
-      let allTimeDays = 3650;
+      const allTimeDays = 3650;
       try {
         let firstQueryPromise;
         let lastQueryPromise;
