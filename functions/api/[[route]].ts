@@ -170,9 +170,20 @@ app.post('/auth/sign_in', async (c) => {
       institution_id: user.primary_institution_id,
       institution_ids: user.primary_institution_id ? [user.primary_institution_id] : [],
       permissions: [
-        { resource: 'patients', action: 'manage', institution_id: user.primary_institution_id }
+        { resource: 'patients', action: 'manage', institution_id: user.primary_institution_id },
+        { resource: 'doctors', action: 'manage' },
+        { resource: 'users', action: 'manage' },
+        { resource: 'appointments', action: 'manage' },
+        { resource: 'reports', action: 'manage' },
+        { resource: 'institutions', action: 'manage' },
+        { resource: 'specialties', action: 'manage' },
+        { resource: 'audit', action: 'manage' }
       ],
-      allowed_routes: ['/dashboard', '/patients', '/appointments', '/schedule-management'],
+      allowed_routes: [
+        '/dashboard', '/patients', '/appointments', '/schedule-management',
+        '/agenda', '/doctors', '/history', '/institutions', '/users', 
+        '/specialties', '/reports', '/audit', '/audit-log', '/governance', '/force-password-change'
+      ],
       is_active: true
     };
 
