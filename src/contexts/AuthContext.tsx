@@ -96,17 +96,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProfileLoaded(true);
     setLoading(false);
     setConnectionError(false);
-    localStorage.removeItem('medco_access_token');
     localStorage.removeItem('medco_user');
   }, []);
 
   const getStoredSession = useCallback(() => {
-    const token = localStorage.getItem('medco_access_token');
     const storedUser = localStorage.getItem('medco_user');
-    if (token && storedUser) {
+    if (storedUser) {
       try {
         const parsedUser = JSON.parse(storedUser);
-        return { session: { access_token: token, user: parsedUser }, user: parsedUser };
+        return { session: { access_token: '', user: parsedUser }, user: parsedUser };
       } catch (e) {
         return { session: null, user: null };
       }
@@ -165,13 +163,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const payloadData: any = data;
       const sessionData = payloadData?.session || payloadData;
-      const token = sessionData.access_token || sessionData.token;
       const user = sessionData.user;
 
-      localStorage.setItem('medco_access_token', token);
       localStorage.setItem('medco_user', JSON.stringify(user));
       
-      setSession({ access_token: token, user: user });
+      setSession({ access_token: '', user: user }); // access_token is now handled by cookies
       setUser(user);
       
       await fetchAccessContext();

@@ -494,7 +494,6 @@ export const useAccessControl = () => {
       
       const firstAssignableRole = getAssignableRoles(next.roles)[0] || next.roles[0];
       setSnapshot(next);
-      setSelectedRoleId((current) => current || next.roles[0]?.id || '');
       setSelectedUserId((current) => current || next.users[0]?.id || '');
       setUserForm((current) => ({
         ...current,
@@ -523,7 +522,6 @@ export const useAccessControl = () => {
       if (error) throw error;
       const next = normalizePermissionMatrix(data);
       setPermissionMatrix(next);
-      setSelectedRoleId((current) => current || next.roles[0]?.id || '');
       setPermissionMatrixLoaded(true);
     } catch (error) {
       toast.error(getErrorMessage(error, 'Erro ao carregar matriz de permissões'));
@@ -658,7 +656,7 @@ export const useAccessControl = () => {
 
 
   const matrixRoles = permissionMatrix.roles.length > 0 ? permissionMatrix.roles : snapshot.roles;
-  const selectedRole = matrixRoles.find((role) => role.id === selectedRoleId) || matrixRoles[0];
+  const selectedRole = matrixRoles.find((role) => role.id === selectedRoleId) || null;
   const selectedRoleSummary = getRoleSummary(selectedRole);
   const isRootSuperadmin = profile?.is_root === true;
   const assignableRoles = useMemo(

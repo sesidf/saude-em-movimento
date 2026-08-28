@@ -1,17 +1,6 @@
 import { Logger } from '@/utils/logger';
 
 /**
- * Obtém o token JWT do localStorage (nossa nova solução de sessão).
- * @returns Token de acesso ou string vazia
- */
-async function obterToken(): Promise<string> {
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem('medco_access_token') || '';
-  }
-  return '';
-}
-
-/**
  * Resultado padrão de uma chamada ao Cloudflare Worker API.
  */
 
@@ -61,10 +50,7 @@ export async function chamarApiPost<T = Record<string, unknown>>(
 
   const executeFetch = async () => {
 
-  const token = await obterToken();
-  if (!token) {
-    return { data: null, error: 'Sessão expirada. Faça login novamente.' };
-  }
+  const isPublicRoute = rota.includes('/api/auth/sign_in') || rota.includes('/api/auth/register') || rota.includes('/api/auth/reset-password');
 
   let tentativa = 0;
   let tempoEspera = 1000; // Começa aguardando 1 segundo
@@ -74,8 +60,8 @@ export async function chamarApiPost<T = Record<string, unknown>>(
     try {
       const resposta = await fetch(rota, {
         method: 'POST',
+        credentials: 'include',
         headers: {
-          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
           Accept: 'application/json',
         },
@@ -171,10 +157,7 @@ export async function chamarApiGet<T = Record<string, unknown>>(
   rota: string,
   tentativasMaximas = 3
 ): Promise<ResultadoWorker<T>> {
-  const token = await obterToken();
-  if (!token) {
-    return { data: null, error: 'Sessão expirada. Faça login novamente.' };
-  }
+  const isPublicRoute = rota.includes('/api/auth/sign_in') || rota.includes('/api/auth/register') || rota.includes('/api/auth/reset-password');
 
   let tentativa = 0;
   let tempoEspera = 1000;
@@ -184,8 +167,8 @@ export async function chamarApiGet<T = Record<string, unknown>>(
     try {
       const resposta = await fetch(rota, {
         method: 'GET',
+        credentials: 'include',
         headers: {
-          Authorization: `Bearer ${token}`,
           Accept: 'application/json',
         },
       });

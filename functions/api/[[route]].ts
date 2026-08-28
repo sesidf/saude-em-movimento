@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { handle } from 'hono/cloudflare-pages';
 import { jwt, sign } from 'hono/jwt';
+import { setCookie, deleteCookie } from 'hono/cookie';
 import { compress } from 'hono/compress';
 import { handlePatientsRpc } from './rpcs/patients';
 import { handleDoctorsRpc } from './rpcs/doctors';
@@ -95,6 +96,7 @@ app.use('*', async (c, next) => {
   const jwtMiddleware = jwt({
     secret: c.env.JWT_SECRET || 'dev-secret-key-change-in-prod',
     alg: 'HS256',
+    cookie: 'medco_access_token',
   });
   return jwtMiddleware(c, next);
 });
@@ -261,6 +263,14 @@ app.post('/auth/sign_in', async (c) => {
       c.env.JWT_SECRET || 'dev-secret-key-change-in-prod'
     );
 
+    setCookie(c, 'medco_access_token', token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'Strict',
+      path: '/',
+      maxAge: 60 * 60 * 24 // 24 hours
+    });
+
     return c.json({ 
       data: {
         session: { access_token: token, user: authProfile }
@@ -281,6 +291,11 @@ app.post('/auth/session', async (c) => {
   } catch (err: any) {
     return c.json({ error: err.message || 'Error fetching session' }, 500);
   }
+});
+
+app.post('/auth/logout', async (c) => {
+  deleteCookie(c, 'medco_access_token', { path: '/' });
+  return c.json({ data: { success: true }, error: null });
 });
 
 
