@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS users (
   primary_institution_id TEXT REFERENCES institutions(id) ON DELETE SET NULL,
   is_active INTEGER NOT NULL DEFAULT true,
   auth_status text NOT NULL DEFAULT 'pending_auth' CHECK (auth_status IN ('pending_auth', 'active', 'disabled')),
+  password_hash text,
   metadata TEXT NOT NULL DEFAULT '{}'::TEXT,
   deleted_at DATETIME,
   deleted_by TEXT,
