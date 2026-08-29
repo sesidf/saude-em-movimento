@@ -131,7 +131,9 @@ const Login = () => {
       await updatePassword(novaSenha);
       
       await refreshAccessContext();
-      navigate('/');
+      // Garantia de 100% de que a UI inteira será resetada e o usuário irá para a tela inicial correta
+      window.location.href = '/'; 
+      window.location.reload();
     } catch (error: any) {
       console.error('Erro ao atualizar senha:', error);
     } finally {

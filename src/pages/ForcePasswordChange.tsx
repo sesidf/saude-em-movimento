@@ -43,7 +43,8 @@ const ForcePasswordChange = () => {
 
       // Atualiza o contexto para carregar a flag atualizada e redirecionar
       await refreshAccessContext();
-      navigate('/');
+      window.location.href = '/';
+      window.location.reload();
     } catch (error: unknown) {
       console.error(error);
     } finally {
