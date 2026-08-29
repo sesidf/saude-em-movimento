@@ -206,8 +206,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [clearAuthState, getStoredSession]);
 
   const requestPasswordReset = useCallback(async (email: string) => {
-    // Implementar rota /api/auth/reset-password
-    toast.success('Link de redefinição simulado (API requer implementação).');
+    try {
+      const res = await chamarApiPost('/api/auth/request-password-reset', { email });
+      if (res.error) throw new Error(res.error);
+      toast.success('Se o email estiver cadastrado, um link de recuperação foi enviado.');
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao solicitar redefinição de senha.');
+      throw err;
+    }
   }, []);
 
   const updatePassword = useCallback(async (newPassword: string) => {
@@ -233,8 +239,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!profile) return;
     const updated = { ...profile.preferences, ...newPreferences };
     
-    // Atualizar na API real aqui (fetch)
+    // Atualiza o estado local imediatamente para uma UI responsiva
     setProfile({ ...profile, preferences: updated });
+
+    // Atualiza no banco D1 de forma assíncrona
+    try {
+      await chamarApiPost('/api/auth/preferences', { preferences: updated });
+    } catch (err) {
+      console.error("Erro ao salvar preferências na nuvem:", err);
+      toast.error("Não foi possível salvar suas preferências na nuvem.");
+    }
   }, [profile]);
 
   const permissions = useMemo(() => profile?.permissions ?? [], [profile?.permissions]);

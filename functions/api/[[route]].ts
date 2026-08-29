@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { handle } from 'hono/cloudflare-pages';
-import { jwt, sign } from 'hono/jwt';
+import { jwt, sign, verify } from 'hono/jwt';
 import { setCookie, deleteCookie } from 'hono/cookie';
 import { compress } from 'hono/compress';
 import { handlePatientsRpc } from './rpcs/patients';
@@ -17,6 +17,7 @@ type Bindings = {
   DB: any;
   JWT_SECRET: string;
   ROOT_EMAIL?: string;
+  RESEND_API_KEY?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
@@ -600,6 +601,33 @@ app.all('/auth/session', async (c) => {
     return c.json({ data: null, error: err.message }, 500);
   }
 });
+// --- AUTH UPDATE PREFERENCES ---
+app.post('/auth/preferences', async (c) => {
+  try {
+    const payload = c.get('jwtPayload') as any;
+    if (!payload || !payload.id) return c.json({ data: null, error: 'Sessão inválida' }, 401);
+    
+    // O ID do perfil está no payload JWT
+    const profileId = payload.profile?.id;
+    if (!profileId) return c.json({ data: null, error: 'Perfil não encontrado na sessão' }, 400);
+
+    const body = await c.req.json();
+    const { preferences } = body;
+    if (!preferences || typeof preferences !== 'object') {
+      return c.json({ data: null, error: 'As preferências devem ser um objeto JSON' }, 400);
+    }
+
+    const result = await c.env.DB.prepare(
+      "UPDATE profiles SET preferences = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    ).bind(JSON.stringify(preferences), profileId).run();
+    
+    if (!result.success) throw new Error(result.error || 'Falha ao atualizar as preferências');
+
+    return c.json({ data: { success: true }, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
 
 
 // --- AUTH UPDATE PASSWORD ---
@@ -614,6 +642,80 @@ app.post('/auth/update-password', async (c) => {
 
     const hashedPwd = await createPasswordHash(password);
     
+    const result = await c.env.DB.prepare(
+      "UPDATE users SET password_hash = ?, auth_status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    ).bind(hashedPwd, payload.id).run();
+    
+    if (!result.success) throw new Error(result.error || 'Falha ao atualizar a senha');
+
+    return c.json({ data: { success: true }, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+// --- AUTH REQUEST PASSWORD RESET ---
+app.post('/auth/request-password-reset', async (c) => {
+  try {
+    const { email } = await c.req.json();
+    if (!email) return c.json({ data: null, error: 'O email é obrigatório' }, 400);
+
+    const repo = new UserRepository(c.env.DB);
+    const user: any = await repo.findFirst('email = ?', [email]);
+    
+    if (user && user.is_active === 1 && user.auth_status !== 'disabled') {
+      const payload = {
+        id: user.id,
+        action: 'reset_password',
+        exp: Math.floor(Date.now() / 1000) + 15 * 60 // 15 minutes
+      };
+      
+      const token = await sign(payload, c.env.JWT_SECRET);
+      const resetLink = `${new URL(c.req.url).origin}/#/reset-password?token=${token}`;
+
+      if (c.env.RESEND_API_KEY) {
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${c.env.RESEND_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            from: 'Saúde em Movimento <no-reply@resend.dev>',
+            to: [email],
+            subject: 'Redefinição de Senha - Saúde em Movimento',
+            html: `<p>Olá, ${user.full_name},</p><p>Você solicitou a redefinição da sua senha.</p><p><a href="${resetLink}">Clique aqui para criar uma nova senha</a>.</p><p>Este link expira em 15 minutos.</p>`
+          })
+        });
+      } else {
+        console.log('RESEND_API_KEY não configurada. Link de reset gerado:', resetLink);
+      }
+    }
+
+    return c.json({ data: { success: true }, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+// --- AUTH RESET PASSWORD (ANON) ---
+app.post('/auth/reset-password', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { token, password } = body;
+    if (!token || !password) return c.json({ data: null, error: 'Token e nova senha são obrigatórios' }, 400);
+
+    let payload: any;
+    try {
+      payload = await verify(token, c.env.JWT_SECRET, 'HS256');
+    } catch {
+      return c.json({ data: null, error: 'Token inválido ou expirado' }, 401);
+    }
+
+    if (payload.action !== 'reset_password' || !payload.id) {
+      return c.json({ data: null, error: 'Token de recuperação inválido' }, 401);
+    }
+
+    const hashedPwd = await createPasswordHash(password);
     const result = await c.env.DB.prepare(
       "UPDATE users SET password_hash = ?, auth_status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
     ).bind(hashedPwd, payload.id).run();
@@ -649,7 +751,15 @@ app.post('/admin-create-user', async (c) => {
     if (role_id) {
       await new BaseRepository(c.env.DB, '').execute('INSERT INTO user_roles (id, user_id, role_id, institution_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?)', [userId, role_id, institution_id || null]);
     }
-    // Desativado a pedido: await new BaseRepository(c.env.DB, '').execute("INSERT INTO audit_log (id, table_name, record_id, action, changed_by) VALUES (lower(hex(randomblob(16))), 'users', ?, 'ADMIN_CREATE', 'admin')", [userId]);
+    // Registra na tabela de auditoria
+    const payload = c.get('jwtPayload') as any;
+    const adminId = payload?.id || payload?.profile?.id || 'admin';
+    const adminName = payload?.profile?.full_name || 'System Admin';
+    
+    await c.env.DB.prepare(
+      "INSERT INTO audit_log (id, table_name, record_id, action, user_id, user_name) VALUES (lower(hex(randomblob(16))), 'users', ?, 'ADMIN_CREATE', ?, ?)"
+    ).bind(userId, adminId, adminName).run();
+
     return c.json({ data: { success: true, id: userId }, error: null });
   } catch (err: any) {
     return c.json({ data: null, error: err.message }, 500);

@@ -48,10 +48,7 @@ export const handleUsersRpc = async (env: any, functionName: string, params: any
     return { data: { success: true }, error: null };
   }
 
-  if (functionName === 'confirm_password_change') {
-    // Placeholder — senha já é gerenciada pelo endpoint de login
-    return { data: { success: true }, error: null };
-  }
+
 
   return { data: null, error: 'Function not implemented' };
 };

@@ -129,8 +129,6 @@ const Login = () => {
 
     try {
       await updatePassword(novaSenha);
-      const { error: rpcError } = await chamarApiPost('/api/rpc/confirm_password_change');
-      if (rpcError) throw rpcError;
       
       await refreshAccessContext();
       navigate('/');

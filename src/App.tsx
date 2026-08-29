@@ -11,6 +11,7 @@ import { InactivityTimer } from "@/components/InactivityTimer";
 const WorkspaceShell = lazy(() => import("@/components/WorkspaceShell"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const ForcePasswordChange = lazy(() => import("./pages/ForcePasswordChange"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 
 
@@ -121,6 +122,7 @@ const App = () => {
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/privacidade" element={<PrivacyPolicy />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
                 <Route
                   path="/forcar-troca-senha"
                   element={
