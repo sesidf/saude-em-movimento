@@ -88,20 +88,26 @@ export class DashboardRepository extends BaseRepository {
 
   public async getDatabaseSizeStats() {
     try {
-      // Retorna objeto ou array dependendo da implementação do queryFirst
-      const pageCountRow = await this.queryFirst("PRAGMA page_count;");
-      const pageSizeRow = await this.queryFirst("PRAGMA page_size;");
+      // PRAGMA page_count and dbstat are restricted in D1 Workers (SQLITE_AUTH error).
+      // We estimate the database size by counting rows across all user tables.
+      const tablesResult = await this.query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'd1_%'");
+      const tables = (tablesResult as any[]).map(t => t.name);
       
-      // Tentar pegar o valor tanto de array (se retornar index 0) ou de objeto com a chave correspondente
-      const pageCount = (pageCountRow as any)?.page_count || (Array.isArray(pageCountRow) ? pageCountRow[0] : 0) || 0;
-      const pageSize = (pageSizeRow as any)?.page_size || (Array.isArray(pageSizeRow) ? pageSizeRow[0] : 0) || 0;
+      let totalRows = 0;
+      for (const table of tables) {
+        try {
+          const row = await this.queryFirst(`SELECT COUNT(*) as total FROM ${table}`);
+          totalRows += (row as any)?.total || 0;
+        } catch(e) {
+          // ignore error for specific table
+        }
+      }
       
-      const currentSizeBytes = pageCount * pageSize;
-      // D1 limit is generally 5GB per database on paid plans, but let's use 500MB for free plan (adjust as necessary)
-      // I'll set 500 MB (524288000 bytes) as conservative limit, or you can change to 5GB (5368709120)
-      const limitBytes = 5 * 1024 * 1024 * 1024; // 5 GB
+      // Assume an average of 512 bytes per row (including indexes and overhead)
+      // This is a rough estimation since physical size cannot be queried directly in D1
+      const currentSizeBytes = Math.max(1024 * 1024, totalRows * 512); // Minimum 1MB for empty db overhead
+      const limitBytes = 5 * 1024 * 1024 * 1024; // 5 GB limit
       
-      // Calculate usage percentage (max 100%)
       const rawPercentage = (currentSizeBytes / limitBytes) * 100;
       const usagePercentage = Math.min(100, Math.round(rawPercentage * 100) / 100);
       
@@ -122,7 +128,7 @@ export class DashboardRepository extends BaseRepository {
         limit_bytes: limitBytes
       };
     } catch (e) {
-      console.error("Erro ao ler PRAGMA page_count/page_size", e);
+      console.error("Erro ao estimar tamanho do banco", e);
       return {
         usage_percentage: 0,
         current_size_pretty: 'N/A',
