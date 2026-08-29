@@ -822,13 +822,11 @@ export default function Users() {
                         // 1. Sincroniza vínculos institucionais e permissões de forma atômica
                         await syncUserInstitutions(selectedUser, targetInstitutions, targetRoleKey);
 
-                        // 2. Se for médico ou perfil operacional estruturado, atualiza também os dados específicos
-                        if (isDoctorRole(targetRoleKey)) {
-                          await assignRole(selectedUser, {
-                            roleKey: targetRoleKey,
-                            institutionId: primaryInstId || '',
-                          });
-                        }
+                        // 2. Atualiza os dados específicos de permissão e perfil
+                        await assignRole(selectedUser, {
+                          roleKey: targetRoleKey,
+                          institutionId: primaryInstId || '',
+                        });
 
                         setManageUserOpen(false);
                         setIsEditingName(false);

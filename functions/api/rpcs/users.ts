@@ -29,12 +29,33 @@ export const handleUsersRpc = async (env: any, functionName: string, params: any
   }
 
   if (functionName === 'set_user_access_profile') {
-    const data = await repo.setUserAccessProfile(params.p_user_id, params.p_role_id, params.p_institution_id);
+    let roleId = params.p_role_id;
+    if (!roleId && params.p_role_key) {
+      const roleRow = await repo.queryFirst("SELECT id FROM roles WHERE key = ?", [params.p_role_key]);
+      roleId = (roleRow as any)?.id;
+    }
+    const data = await repo.setUserAccessProfile(params.p_user_id, roleId, params.p_institution_id);
     return { data, error: null };
   }
 
   if (functionName === 'set_user_operational_profile') {
-    const data = await repo.setUserOperationalProfile(params.p_user_id, params.p_metadata);
+    let roleId = params.p_role_id;
+    if (!roleId && params.p_role_key) {
+      const roleRow = await repo.queryFirst("SELECT id FROM roles WHERE key = ?", [params.p_role_key]);
+      roleId = (roleRow as any)?.id;
+    }
+    
+    if (roleId) {
+      await repo.setUserAccessProfile(params.p_user_id, roleId, params.p_institution_id);
+    }
+    
+    const metadata = params.p_metadata || {
+      professional_registration: params.p_professional_registration,
+      professional_council: params.p_professional_council,
+      specialty_id: params.p_specialty_id
+    };
+    
+    const data = await repo.setUserOperationalProfile(params.p_user_id, metadata);
     return { data, error: null };
   }
 
