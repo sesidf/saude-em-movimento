@@ -187,7 +187,19 @@ app.post('/auth/sign_in', async (c) => {
     `, [user.id]);
     const userRoles = userRolesQuery.results || [];
 
-    // Busca permissões dinâmicas amarradas aos cargos
+    const rootEmail = c.env.ROOT_EMAIL ? String(c.env.ROOT_EMAIL).trim().toLowerCase() : null;
+    const userEmail = user.email ? String(user.email).trim().toLowerCase() : null;
+    const isRoot = Boolean(rootEmail && userEmail === rootEmail);
+    
+    if (isRoot && !userRoles.find((r: any) => r.key === 'superadmin')) {
+      userRoles.push({ key: 'superadmin', name: 'Super Administrador', institution_id: null });
+    }
+
+    if (userRoles.length === 0) {
+      return c.json({ error: 'Sua conta ainda não possui cargos atribuídos. Entre em contato com a administração.' }, 403);
+    }
+
+    // Busca permissões dinâmicas amarradas aos cargos (apenas se tiver cargos)
     const userPermsQuery = await new BaseRepository(c.env.DB, '').query(`
       SELECT p.resource, p.action, ur.institution_id
       FROM user_roles ur
@@ -196,11 +208,6 @@ app.post('/auth/sign_in', async (c) => {
       WHERE ur.user_id = ?
     `, [user.id]);
     const dbPermissions = userPermsQuery.results || [];
-
-    const isRoot = Boolean(c.env.ROOT_EMAIL && user.email === c.env.ROOT_EMAIL);
-    if (isRoot && !userRoles.find((r: any) => r.key === 'superadmin')) {
-      userRoles.push({ key: 'superadmin', name: 'Super Administrador', institution_id: null });
-    }
 
     const rolePriority = ['superadmin', 'admin', 'auditor', 'medico', 'recepcao', 'paciente'];
     let dominantRole = 'paciente';
@@ -249,7 +256,8 @@ app.post('/auth/sign_in', async (c) => {
       permissions: dbPermissions,
       allowed_routes: Array.from(allowedRoutes),
       is_active: true,
-      is_root: isRoot
+      is_root: isRoot,
+      requires_password_change: user.auth_status === 'pending_auth'
     };
 
     // Gera o JWT usando Hono/jwt
@@ -917,7 +925,8 @@ app.post('/system/bootstrap-rbac', async (c) => {
 
     // 5. Associar ROOT_EMAIL ao cargo de superadmin (se já existir)
     if (c.env.ROOT_EMAIL) {
-      const rootUser: any = await new BaseRepository(db, '').queryFirst("SELECT id FROM users WHERE email = ?", [c.env.ROOT_EMAIL]);
+      const rootEmailRaw = String(c.env.ROOT_EMAIL).trim().toLowerCase();
+      const rootUser: any = await new BaseRepository(db, '').queryFirst("SELECT id FROM users WHERE LOWER(email) = ?", [rootEmailRaw]);
       if (rootUser) {
         const superRole = baseRoles.find(r => r.key === 'superadmin');
         if (superRole) {

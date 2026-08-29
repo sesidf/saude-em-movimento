@@ -74,10 +74,10 @@ const Login = () => {
       sessionStorage.removeItem('medco_lockout_until');
 
       // Busca contexto imediato do AuthState para decidir se exibe o formulário ou se redireciona
-      const { data: { session } } = await chamarApiGet('/api/auth/session');
-      if (session?.user) {
-        const { data: contexto } = await chamarApiPost('/api/rpc/get_my_access_context');
-        if (contexto && (contexto as any).requires_password_change) {
+      const { data } = await chamarApiPost('/api/auth/session', {});
+      const profile = (data as any)?.profile;
+      if (profile) {
+        if (profile.requires_password_change) {
           setPrecisaAlterarSenha(true);
         } else {
           navigate('/');

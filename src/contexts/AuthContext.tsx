@@ -244,13 +244,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [userRole]);
 
   const hasPermission = useCallback((resource: string, action: string = 'read', targetInstitutionId?: string | null) => {
+    if (isRoot) return true;
+    
     return permissions.some((permission: AccessPermission) => {
       const matchesResource = permission.resource === resource;
       const matchesAction = permission.action === action || permission.action === 'manage';
       const matchesScope = !targetInstitutionId || !permission.institution_id || permission.institution_id === targetInstitutionId;
       return matchesResource && matchesAction && matchesScope;
     });
-  }, [permissions]);
+  }, [permissions, isRoot]);
 
   const canAccessRoute = useCallback((path: string) => {
     return allowedRoutes.includes(path);
