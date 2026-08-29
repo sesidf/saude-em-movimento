@@ -155,6 +155,8 @@ export function QuickPatientModal({
       if (!formData.gender) novosErros.gender = 'Selecione o sexo.';
       if (formData.blood_type === 'ALUNO' && !formData.student_class)
         novosErros.student_class = 'Informe a turma do aluno.';
+      if (!formData.institution_id)
+        novosErros.institution_id = 'Selecione a instituição.';
     }
 
     if (etapa === 'consentimento') {

@@ -309,7 +309,7 @@ const Patients = () => {
     if (!formData.full_name.trim()) newErrors.full_name = 'Nome completo é obrigatório.';
     else if (!validarNomeCompleto(normalizarEntradaTexto(formData.full_name))) newErrors.full_name = 'Informe o nome completo sem abreviações (nome e sobrenome).';
 
-    if (!editingPatientId && !formData.institution_id && !institutionId) newErrors.institution_id = 'Selecione a instituição.';
+    if (!formData.institution_id) newErrors.institution_id = 'Selecione a instituição.';
 
     if (!validateCPF(formData.cpf)) newErrors.cpf = 'CPF inválido.';
     else if (existingPatientCpfMatch && !editingPatientId) {
