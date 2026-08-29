@@ -348,10 +348,10 @@ const Patients = () => {
     try {
       const payload = {
         // Campos textuais sempre em maiúsculo, exceto e-mail (protocolo exige lowercase)
-        full_name: formData.full_name.trim().toUpperCase(),
-        email: formData.email.trim().toLowerCase() || null,
-        phone: unmaskPhone(formData.phone) || null,
-        cpf: unmaskCPF(formData.cpf),
+        full_name: formData.full_name?.trim().toUpperCase() || '',
+        email: formData.email?.trim().toLowerCase() || null,
+        phone: formData.phone ? unmaskPhone(formData.phone) : null,
+        cpf: unmaskCPF(formData.cpf || ''),
         birth_date: format(parsedBirthDate, 'yyyy-MM-dd'),
         gender: formData.gender,
         address: formData.address ? formData.address.toUpperCase() : null,

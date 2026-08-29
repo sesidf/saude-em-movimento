@@ -211,37 +211,43 @@ export function QuickPatientModal({
         full_name: formData.full_name,
       });
 
-      const { error } = await chamarApiPost('/api/rpc/upsert_patient', {
-        p_patient_id: null,
-        p_institution_id: formData.institution_id,
-        p_full_name: formData.full_name.trim().toUpperCase(),
-        p_email: formData.email.trim().toLowerCase() || null,
-        p_phone: formData.phone.replace(/\D/g, '') || null,
-        p_cpf: formData.cpf.replace(/\D/g, ''),
-        p_birth_date: dataParsed.toISOString().split('T')[0],
-        p_gender: formData.gender,
-        p_address: formData.address ? formData.address.toUpperCase() : null,
-        p_city: formData.city ? formData.city.toUpperCase() : null,
-        p_state: formData.state ? formData.state.toUpperCase() : null,
-        p_zip_code: formData.zip_code ? formData.zip_code.replace(/\D/g, '') : null,
-        p_emergency_contact: formData.emergency_contact ? formData.emergency_contact.toUpperCase() : null,
-        p_emergency_phone: formData.emergency_phone ? formData.emergency_phone.replace(/\D/g, '') : null,
-        p_student_class: formData.student_class ? formData.student_class.toUpperCase() : null,
-        p_blood_type: formData.blood_type || null,
-        p_allergies: formData.allergies ? formData.allergies.toUpperCase() : null,
-        p_chronic_diseases: formData.chronic_diseases ? formData.chronic_diseases.toUpperCase() : null,
-        p_observations: formData.observations ? formData.observations.toUpperCase() : null,
-        p_is_active: true,
-        p_idempotency_key: idempotencyKey,
-        p_tcle_accepted: formData.tcle_accepted,
+      const { data: upsertData, error } = await chamarApiPost<{ success: boolean, id: string }>('/api/patients/upsert', {
+        patient_id: null,
+        institution_id: formData.institution_id,
+        full_name: formData.full_name.trim().toUpperCase(),
+        email: formData.email.trim().toLowerCase() || null,
+        phone: formData.phone.replace(/\D/g, '') || null,
+        cpf: formData.cpf.replace(/\D/g, ''),
+        birth_date: dataParsed.toISOString().split('T')[0],
+        gender: formData.gender,
+        address: formData.address ? formData.address.toUpperCase() : null,
+        city: formData.city ? formData.city.toUpperCase() : null,
+        state: formData.state ? formData.state.toUpperCase() : null,
+        zip_code: formData.zip_code ? formData.zip_code.replace(/\D/g, '') : null,
+        emergency_contact: formData.emergency_contact ? formData.emergency_contact.toUpperCase() : null,
+        emergency_phone: formData.emergency_phone ? formData.emergency_phone.replace(/\D/g, '') : null,
+        student_class: formData.student_class ? formData.student_class.toUpperCase() : null,
+        blood_type: formData.blood_type || null,
+        allergies: formData.allergies ? formData.allergies.toUpperCase() : null,
+        chronic_diseases: formData.chronic_diseases ? formData.chronic_diseases.toUpperCase() : null,
+        observations: formData.observations ? formData.observations.toUpperCase() : null,
+        is_active: true,
+        idempotency_key: idempotencyKey,
+        tcle_accepted: formData.tcle_accepted,
       });
 
       if (error) throw error;
+      if (!upsertData?.id) throw new Error('ID do paciente não retornado');
 
       // Busca o paciente criado para obter o ID e código gerado
-      const { data, error: selectError } = await chamarApiPost('/api/table/patients/select', {});
+      const { data: selectData, error: selectError } = await chamarApiPost<any[]>('/api/table/patients/select', {
+        filters: [{ column: 'id', value: upsertData.id }]
+      });
 
       if (selectError) throw selectError;
+      if (!selectData || selectData.length === 0) throw new Error('Paciente não encontrado no banco');
+      
+      const patientRecord = selectData[0];
 
       // Registra evento de auditoria — sem expor dados pessoais no log
       // Finalidade: rastreabilidade de cadastros originados pelo fluxo de agendamento
@@ -250,10 +256,10 @@ export function QuickPatientModal({
         action: 'cadastro_expresso',
         event_type: 'create',
         severity: 'info',
-        description: `Novo paciente cadastrado via agendamento (código: ${data.patient_code || data.id})`,
+        description: `Novo paciente cadastrado via agendamento (código: ${patientRecord.patient_code || patientRecord.id})`,
         payload: {
-          patient_id: data.id,
-          patient_code: data.patient_code,
+          patient_id: patientRecord.id,
+          patient_code: patientRecord.patient_code,
           institution_id: formData.institution_id,
           perfil: formData.blood_type,
           origem: 'modal_agendamento',
@@ -261,7 +267,7 @@ export function QuickPatientModal({
       });
 
       toast.success('Paciente cadastrado com sucesso!');
-      onSuccess(data as PatientOption);
+      onSuccess(patientRecord as PatientOption);
       onOpenChange(false);
       resetar();
     } catch (error) {

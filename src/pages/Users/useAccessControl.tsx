@@ -33,7 +33,6 @@ const ROLE_LABELS: Record<string, string> = {
   medico: 'Profissional de saude',
   recepcao: 'Recepcao',
   auditor: 'Auditor',
-  paciente: 'Paciente',
 };
 
 
@@ -151,7 +150,7 @@ const getScopeLabel = (permission: Pick<PermissionMatrixRow | EffectivePermissio
 const isSuperadminUser = (user: AccessUser | null | undefined) => userHasRole(user, 'superadmin');
 
 const isDoctorRole = (roleKey?: string | null) => roleKey === 'medico';
-const STRUCTURAL_ROLE_PRIORITY = ['superadmin', 'admin', 'medico', 'recepcao', 'auditor', 'paciente'] as const;
+const STRUCTURAL_ROLE_PRIORITY = ['superadmin', 'admin', 'medico', 'recepcao', 'auditor'] as const;
 const DEFAULT_PROFESSIONAL_COUNCIL = 'CRM';
 
 const PROFESSIONAL_COUNCIL_OPTIONS = [

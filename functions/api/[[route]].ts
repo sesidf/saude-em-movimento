@@ -210,8 +210,8 @@ app.post('/auth/sign_in', async (c) => {
     `, [user.id]);
     const dbPermissions = userPermsQuery.results || [];
 
-    const rolePriority = ['superadmin', 'admin', 'auditor', 'medico', 'recepcao', 'paciente'];
-    let dominantRole = 'paciente';
+    const rolePriority = ['superadmin', 'admin', 'auditor', 'medico', 'recepcao'];
+    let dominantRole = 'recepcao';
     let highestPriority = rolePriority.length;
 
     for (const r of userRoles as any[]) {
@@ -1038,10 +1038,6 @@ app.post('/system/bootstrap-rbac', async (c) => {
       {
         key: 'auditor', name: 'Auditor', description: 'Auditoria de prontuários e acessos.', is_system: 1,
         perms: ['dashboard.read', 'medical_records.read']
-      },
-      {
-        key: 'paciente', name: 'Paciente', description: 'Acesso restrito aos próprios dados.', is_system: 1,
-        perms: []
       }
     ].map(r => ({ ...r, id: crypto.randomUUID() }));
 
