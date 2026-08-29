@@ -87,12 +87,50 @@ export class DashboardRepository extends BaseRepository {
   }
 
   public async getDatabaseSizeStats() {
-    const tables = ['patients', 'appointments', 'doctors', 'users', 'institutions', 'audit_log'];
-    const counts: Record<string, number> = {};
-    for (const table of tables) {
-      const row = await this.queryFirst(`SELECT COUNT(*) as total FROM ${table}`);
-      counts[table] = (row as any)?.total || 0;
+    try {
+      // Retorna objeto ou array dependendo da implementação do queryFirst
+      const pageCountRow = await this.queryFirst("PRAGMA page_count;");
+      const pageSizeRow = await this.queryFirst("PRAGMA page_size;");
+      
+      // Tentar pegar o valor tanto de array (se retornar index 0) ou de objeto com a chave correspondente
+      const pageCount = (pageCountRow as any)?.page_count || (Array.isArray(pageCountRow) ? pageCountRow[0] : 0) || 0;
+      const pageSize = (pageSizeRow as any)?.page_size || (Array.isArray(pageSizeRow) ? pageSizeRow[0] : 0) || 0;
+      
+      const currentSizeBytes = pageCount * pageSize;
+      // D1 limit is generally 5GB per database on paid plans, but let's use 500MB for free plan (adjust as necessary)
+      // I'll set 500 MB (524288000 bytes) as conservative limit, or you can change to 5GB (5368709120)
+      const limitBytes = 5 * 1024 * 1024 * 1024; // 5 GB
+      
+      // Calculate usage percentage (max 100%)
+      const rawPercentage = (currentSizeBytes / limitBytes) * 100;
+      const usagePercentage = Math.min(100, Math.round(rawPercentage * 100) / 100);
+      
+      const formatBytes = (bytes: number) => {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+      };
+
+      return {
+        usage_percentage: usagePercentage,
+        current_size_pretty: formatBytes(currentSizeBytes),
+        limit_pretty: formatBytes(limitBytes),
+        free_pretty: formatBytes(Math.max(0, limitBytes - currentSizeBytes)),
+        current_size_bytes: currentSizeBytes,
+        limit_bytes: limitBytes
+      };
+    } catch (e) {
+      console.error("Erro ao ler PRAGMA page_count/page_size", e);
+      return {
+        usage_percentage: 0,
+        current_size_pretty: 'N/A',
+        limit_pretty: '5 GB',
+        free_pretty: '5 GB',
+        current_size_bytes: 0,
+        limit_bytes: 5368709120
+      };
     }
-    return counts;
   }
 }
