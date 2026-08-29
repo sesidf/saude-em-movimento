@@ -90,12 +90,6 @@ const userHasRole = (user: AccessUser | null | undefined, roleKey: string) => (
 ).some((role) => role.role_key === roleKey);
 
 
-const promoteSuperadminViaServer = async (targetUserId: string) => {
-  const { error } = await chamarApiPost('/api/promote-superadmin', { target_user_id: targetUserId });
-  if (error) {
-    throw new Error(typeof error === 'string' ? error : (error as any).message || 'Erro ao promover superadministrador.');
-  }
-};
 
 const emptyPermissionMatrix: PermissionsMatrix = {
   roles: [],
@@ -1045,9 +1039,7 @@ export const useAccessControl = () => {
         specialty_id: isDoctorRole(state.roleKey) ? state.specialtyId : null,
       });
 
-      if (state.roleKey === 'superadmin') {
-        await promoteSuperadminViaServer(user.id);
-      } else if (structuralGlobalProfile) {
+      if (structuralGlobalProfile) {
         const { error } = await chamarApiPost('/api/rpc/set_user_access_profile', {
           p_user_id: user.id,
           p_role_key: state.roleKey,
@@ -1325,6 +1317,26 @@ export const useAccessControl = () => {
     }
   };
 
+  const deleteRole = async (roleId: string) => {
+    if (!window.confirm("Tem certeza que deseja excluir este cargo? Essa ação não pode ser desfeita.")) return;
+    setSaving(true);
+    try {
+      const p_idempotency_key = await buildIdempotencyKey('delete_role', { role_id: roleId });
+      const { error } = await chamarApiPost('/api/rpc/delete_role', {
+        p_role_id: roleId,
+        p_idempotency_key
+      });
+      if (error) throw error;
+      toast.success('Cargo excluído com sucesso');
+      await loadSnapshot();
+      await loadPermissionMatrix();
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Erro ao excluir cargo'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const updatePermission = async (permission: PermissionMatrixRow, enabled: boolean) => {
     if (!selectedRole) return;
     if (permission.applicable === false) {
@@ -1577,7 +1589,7 @@ export const useAccessControl = () => {
     loadSnapshot, loadPermissionMatrix, loadAuditEntries, loadRoleSupportCatalogs,
     buildAssignmentState, updateAssignState, canManageTargetUser, loadEffectivePermissions,
     toggleUserInstitution, createUser, saveInstitution, setUserActive, updateUserName,
-    linkInstitution, linkInstitutionById, assignRole, syncUserInstitutions,
+    linkInstitution, linkInstitutionById, assignRole, syncUserInstitutions, deleteRole,
     updatePermission, applyPermissionChange, applyUserPermissionChange
   };
 };

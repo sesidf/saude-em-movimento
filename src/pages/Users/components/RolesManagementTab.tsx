@@ -2,7 +2,10 @@ import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ShieldCheck, Plus, Edit2, ShieldAlert, Loader2, KeyRound, Search, CheckCircle2, Lock, AlertTriangle } from 'lucide-react';
+import { 
+  ShieldCheck, ShieldAlert, Edit2, KeyRound, CheckCircle2, Lock, 
+  Search, Plus, Loader2, AlertTriangle, Trash2
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { chamarApiPost } from '@/lib/workerApi';
 import type { RoleRow } from '../types';
@@ -245,9 +248,16 @@ export function RolesManagementTab({ roles, accessControl }: { roles: RoleRow[],
                   </div>
                   {role.name}
                 </CardTitle>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-white rounded-full text-slate-400 shadow-sm border border-transparent hover:border-slate-200">
-                  <Edit2 className="h-4 w-4" />
-                </Button>
+                <div className="flex gap-1">
+                  {!role.is_system && (
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-rose-50 rounded-full text-slate-400 hover:text-rose-600 shadow-sm border border-transparent" onClick={(e) => { e.stopPropagation(); accessControl.deleteRole(role.id); }}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-white rounded-full text-slate-400 shadow-sm border border-transparent hover:border-slate-200">
+                    <Edit2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="text-sm text-slate-600 pt-4 space-y-3">

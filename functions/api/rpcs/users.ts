@@ -64,6 +64,21 @@ export const handleUsersRpc = async (env: any, functionName: string, params: any
     return { data, error: null };
   }
 
+  if (functionName === 'grant_permission') {
+    const data = await repo.grantPermission(params.p_role_id, params.p_permission_id, params.p_institution_id);
+    return { data, error: null };
+  }
+
+  if (functionName === 'revoke_permission') {
+    const data = await repo.revokePermission(params.p_role_id, params.p_permission_id);
+    return { data, error: null };
+  }
+
+  if (functionName === 'delete_role') {
+    const data = await repo.deleteRole(params.p_role_id);
+    return { data, error: null };
+  }
+
   if (functionName === 'get_my_access_context') {
     // Retorna contexto genérico - o JWT já contém os dados necessários
     return { data: { success: true }, error: null };
