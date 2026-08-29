@@ -301,10 +301,16 @@ export const normalizarEntradaTexto = (texto: string): string => {
 export const validarNomeCompleto = (nome: string): boolean => {
   if (!nome || !nome.trim()) return false;
   const partes = nome.trim().split(/\s+/).filter(Boolean);
-  // Deve ter pelo menos 2 partes (nome + sobrenome)
-  if (partes.length < 2) return false;
-  // Cada parte deve ter pelo menos 2 letras (sem abreviação)
-  return partes.every(parte => parte.length >= 2);
+  
+  if (partes.length === 0) return false;
+  
+  // Se for apenas um nome (ex: BRAULIO), exige que tenha pelo menos 2 letras.
+  if (partes.length === 1) {
+    return partes[0].length >= 2;
+  }
+  
+  // Se tiver múltiplas partes, considera válido para flexibilizar nomes com conectivos curtos ou apenas iniciais
+  return true;
 };
 
 /**

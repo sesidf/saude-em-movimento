@@ -151,7 +151,7 @@ const Patients = () => {
     setExcluindoPacienteRaiz(true);
     try {
       const { data, error } = await chamarApiPost('/api/patients/excluir_raiz', {
-        paciente_id: pacienteParaExcluirRaiz.id,
+        patient_id: pacienteParaExcluirRaiz.id,
         chave_idempotencia: crypto.randomUUID(),
       });
 
@@ -307,7 +307,7 @@ const Patients = () => {
     const newErrors: Record<string, string> = {};
 
     if (!formData.full_name.trim()) newErrors.full_name = 'Nome completo é obrigatório.';
-    else if (!validarNomeCompleto(normalizarEntradaTexto(formData.full_name))) newErrors.full_name = 'Informe o nome completo sem abreviações (nome e sobrenome).';
+    else if (!validarNomeCompleto(normalizarEntradaTexto(formData.full_name))) newErrors.full_name = 'Informe um nome válido (mínimo 2 letras).';
 
     if (!formData.institution_id) newErrors.institution_id = 'Selecione a instituição.';
 
@@ -385,6 +385,7 @@ const Patients = () => {
       });
 
       const { error } = await chamarApiPost('/api/patients/upsert', {
+        id: editingPatientId || undefined,
         patient_id: editingPatientId,
         institution_id: formData.institution_id || institutionId,
         ...payload,
@@ -482,10 +483,10 @@ const Patients = () => {
       setFormData(prev => ({ ...prev, [name]: normalizado }));
       // Valida nomes completos (sem abreviações) ao sair do campo
       if (name === 'full_name' && normalizado && !validarNomeCompleto(normalizado)) {
-        setErrors(prev => ({ ...prev, full_name: 'Informe o nome completo sem abreviações.' }));
+        setErrors(prev => ({ ...prev, full_name: 'Informe um nome válido.' }));
       }
       if (name === 'emergency_contact' && normalizado && !validarNomeCompleto(normalizado)) {
-        setErrors(prev => ({ ...prev, emergency_contact: 'Informe o nome completo sem abreviações.' }));
+        setErrors(prev => ({ ...prev, emergency_contact: 'Informe um nome válido.' }));
       }
     } else if (name === 'city' || name === 'address' || name === 'state') {
       // Endereço, cidade e UF também em maiúsculas sem acentos
