@@ -602,6 +602,31 @@ app.all('/auth/session', async (c) => {
 });
 
 
+// --- AUTH UPDATE PASSWORD ---
+app.post('/auth/update-password', async (c) => {
+  try {
+    const payload = c.get('jwtPayload') as any;
+    if (!payload || !payload.id) return c.json({ data: null, error: 'Sessão inválida' }, 401);
+    
+    const body = await c.req.json();
+    const { password } = body;
+    if (!password) return c.json({ data: null, error: 'A nova senha é obrigatória' }, 400);
+
+    const hashedPwd = await createPasswordHash(password);
+    
+    const result = await c.env.DB.prepare(
+      "UPDATE users SET password_hash = ?, auth_status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    ).bind(hashedPwd, payload.id).run();
+    
+    if (!result.success) throw new Error(result.error || 'Falha ao atualizar a senha');
+
+    return c.json({ data: { success: true }, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+
 // --- ADMIN CREATE USER ---
 app.post('/admin-create-user', async (c) => {
   try {

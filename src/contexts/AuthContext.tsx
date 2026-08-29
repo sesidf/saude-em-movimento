@@ -211,8 +211,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const updatePassword = useCallback(async (newPassword: string) => {
-    // Implementar rota /api/auth/update-password
-    toast.success('Senha atualizada (API requer implementação).');
+    try {
+      const res = await chamarApiPost('/api/auth/update-password', { password: newPassword });
+      if (res.error) throw new Error(res.error);
+      toast.success('Senha atualizada com sucesso!');
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao atualizar a senha.');
+      throw err;
+    }
   }, []);
 
   const refreshAccessContext = useCallback(async () => {
