@@ -30,7 +30,6 @@ import { formatEmail, getAvatarColor, getInitials, isSuspiciousData, normalizarE
 import { buildIdempotencyKey } from '@/lib/idempotency';
 import { useConfirm } from '@/hooks/useConfirm';
 import { getOperationalErrorMessage, getErrorMessage } from '@/lib/errors';
-import { generateAndDownloadModuleExport, type ExportFormat } from '@/lib/officialExports';
 import { formatOperationalDateTime } from '@/lib/operationalDateTime';
 import { maskCPF, maskPhone, maskCEP, unmaskPhone, unmaskCPF, validateCPF, validateEmail, validatePhone, censorCPF } from '@/utils/masks';
 import { extrairIntencaoNavegacao } from '@/lib/intencaoNavegacao';
@@ -121,7 +120,7 @@ const Patients = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const { data: patients = [], isLoading: loading, refetch: loadPatients } = usePatients(searchTerm);
   const [formData, setFormData] = useState(emptyForm);
-  const [exporting, setExporting] = useState<ExportFormat | null>(null);
+
   const [statusFilter, setStatusFilter] = useState('ativos');
   const [warningTypeFilter, setWarningTypeFilter] = useState('all');
   const [institutionFilter, setInstitutionFilter] = useState('all');
@@ -228,7 +227,7 @@ const Patients = () => {
     hasPermission('patients', 'create', institutionId) ||
     hasPermission('patients', 'update', institutionId) ||
     hasPermission('patients', 'manage', institutionId);
-  const canExportPatients = hasPermission('patients', 'export', institutionId);
+
   const canDeletePatients = !isReception && (
     hasPermission('patients', 'delete', institutionId) ||
     hasPermission('patients', 'manage', institutionId) ||
@@ -537,26 +536,6 @@ const Patients = () => {
       return;
     }
     setFormData({ ...formData, [name]: value });
-  };
-
-  /**
-   * Exporta apenas os pacientes atualmente visíveis na grade (respeitando filtros ativos).
-   * @param formato - Formato de exportação ('excel')
-   */
-  const handleExport = async (formato: ExportFormat) => {
-    setExporting(formato);
-    try {
-      // Passa os IDs filtrados para exportar apenas o que está visível na tela
-      const idsFiltrados = visiblePatients.map(p => p.id);
-      await generateAndDownloadModuleExport('patients', formato, {
-        search: searchTerm.trim() || null,
-        patient_ids: idsFiltrados.length > 0 ? idsFiltrados : undefined,
-      });
-    } catch (error) {
-      toast.error(await getOperationalErrorMessage(error, 'Não foi possível gerar a exportação.'));
-    } finally {
-      setExporting(null);
-    }
   };
 
   const filteredPatients = patients.filter((patient) => {
@@ -980,11 +959,7 @@ const Patients = () => {
               </Select>
             )}
 
-            {canExportPatients && (
-              <Button variant="outline" className="h-9 w-9 p-0 rounded-xl border-slate-200/90 bg-white shadow-2xs hover:bg-slate-50 text-slate-700" disabled={exporting !== null} onClick={() => { void handleExport('excel'); }}>
-                {exporting !== null ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              </Button>
-            )}
+
 
             {canManagePatients && (
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
