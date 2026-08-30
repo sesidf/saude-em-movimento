@@ -427,16 +427,21 @@ app.post('/patients', async (c) => {
   try {
     const body = await c.req.json().catch(() => ({}));
     const { search, institution_id, include_inactive, limit } = body as any;
-    let query = 'SELECT * FROM patients WHERE deleted_at IS NULL';
+    let query = `
+      SELECT p.*, i.name as institution_name 
+      FROM patients p 
+      LEFT JOIN institutions i ON p.institution_id = i.id 
+      WHERE p.deleted_at IS NULL
+    `;
     const bind: any[] = [];
-    if (!include_inactive) { query += ' AND is_active = 1'; }
-    if (institution_id) { query += ' AND institution_id = ?'; bind.push(institution_id); }
+    if (!include_inactive) { query += ' AND p.is_active = 1'; }
+    if (institution_id) { query += ' AND p.institution_id = ?'; bind.push(institution_id); }
     if (search) {
-      query += ' AND (full_name LIKE ? OR cpf LIKE ? OR phone LIKE ? OR email LIKE ?)';
+      query += ' AND (p.full_name LIKE ? OR p.cpf LIKE ? OR p.phone LIKE ? OR p.email LIKE ?)';
       const s = '%' + search + '%';
       bind.push(s, s, s, s);
     }
-    query += ' ORDER BY full_name ASC LIMIT ?';
+    query += ' ORDER BY p.full_name ASC LIMIT ?';
     bind.push(limit || 10000);
     const { results, success, error } = await c.env.DB.prepare(query).bind(...bind).all();
     if (!success) throw new Error(error || 'Query fail');
