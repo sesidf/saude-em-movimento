@@ -226,7 +226,7 @@ export function QuickPatientModal({
         zip_code: formData.zip_code ? formData.zip_code.replace(/\D/g, '') : null,
         emergency_contact: formData.emergency_contact ? formData.emergency_contact.toUpperCase() : null,
         emergency_phone: formData.emergency_phone ? formData.emergency_phone.replace(/\D/g, '') : null,
-        ...(formData.blood_type === 'ALUNO' ? { student_class: formData.student_class ? formData.student_class.toUpperCase() : null } : {}),
+        // student_class removido para evitar erro de coluna inexistente no banco
         blood_type: formData.blood_type || null,
         allergies: formData.allergies ? formData.allergies.toUpperCase() : null,
         chronic_diseases: formData.chronic_diseases ? formData.chronic_diseases.toUpperCase() : null,

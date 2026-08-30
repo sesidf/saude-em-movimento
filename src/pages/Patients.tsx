@@ -157,15 +157,15 @@ const Patients = () => {
 
       if (error) throw new Error(error);
 
-      const res = data as { sucesso?: boolean; mensagem?: string };
-      if (res?.sucesso) {
-        toast.success(res.mensagem || 'Paciente, relatórios e todo o seu histórico foram permanentemente excluídos.');
+      const res = data as { success?: boolean; message?: string };
+      if (res?.success) {
+        toast.success(res.message || 'Paciente, relatórios e todo o seu histórico foram permanentemente excluídos.');
         setPacienteParaExcluirRaiz(null);
         setTextoConfirmacaoExclusao('');
         await queryClient.invalidateQueries();
         await loadPatients();
       } else {
-        throw new Error(res?.mensagem || 'Falha ao excluir o paciente.');
+        throw new Error(res?.message || 'Falha ao excluir o paciente.');
       }
     } catch (err: any) {
       console.error('Erro ao executar exclusão definitiva de paciente pelo root:', err);
@@ -359,7 +359,7 @@ const Patients = () => {
         zip_code: formData.zip_code ? formData.zip_code.replace(/\D/g, '') : null,
         emergency_contact: formData.emergency_contact ? formData.emergency_contact.toUpperCase() : null,
         emergency_phone: formData.emergency_phone ? unmaskPhone(formData.emergency_phone) : null,
-        ...(formData.blood_type === 'ALUNO' ? { student_class: formData.student_class ? formData.student_class.toUpperCase() : null } : {}),
+        // student_class removido para evitar erro de coluna inexistente no banco
         blood_type: formData.blood_type || null,
         allergies: formData.allergies ? formData.allergies.toUpperCase() : null,
         chronic_diseases: formData.chronic_diseases ? formData.chronic_diseases.toUpperCase() : null,
@@ -379,12 +379,13 @@ const Patients = () => {
       }
 
       const p_idempotency_key = await buildIdempotencyKey('upsert_patient', {
+        id: editingPatientId || undefined,
         patient_id: editingPatientId,
         institution_id: formData.institution_id || institutionId,
         ...payload,
       });
 
-      const { error } = await chamarApiPost('/api/patients/upsert', {
+      const payloadCompleto = {
         id: editingPatientId || undefined,
         patient_id: editingPatientId,
         institution_id: formData.institution_id || institutionId,
@@ -392,7 +393,11 @@ const Patients = () => {
         is_active: true,
         idempotency_key: p_idempotency_key,
         tcle_accepted: true,
-      });
+      };
+
+      console.log('Enviando payload para upsert:', payloadCompleto);
+
+      const { error } = await chamarApiPost('/api/patients/upsert', payloadCompleto);
 
       if (error) throw new Error(error);
       toast.success(editingPatientId ? 'Paciente atualizado com sucesso!' : 'Paciente cadastrado com sucesso!');
