@@ -63,6 +63,19 @@ export const handleUsersRpc = async (env: any, functionName: string, params: any
       const existingDoctor = await repo.queryFirst("SELECT id FROM doctors WHERE user_id = ?", [params.p_user_id]);
       const doctorIdToUse = existingDoctor ? (existingDoctor as any).id : crypto.randomUUID();
 
+      // GARANTIA DE EXISTÊNCIA NO PROFILES PARA LEGACY FOREIGN KEYS NAS TABELAS CLÍNICAS
+      const userRecord = await repo.queryFirst("SELECT email, full_name FROM users WHERE id = ?", [params.p_user_id]);
+      if (userRecord) {
+        const u = userRecord as any;
+        const nameParts = (u.full_name || 'Profissional').split(' ');
+        const firstName = nameParts[0];
+        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : ' ';
+        await repo.execute(
+          'INSERT OR IGNORE INTO profiles (id, email, first_name, last_name, role) VALUES (?, ?, ?, ?, ?)',
+          [params.p_user_id, u.email, firstName, lastName, 'medico']
+        );
+      }
+
       await docRepo.upsertDoctor({
         user_id: params.p_user_id,
         doctor_id: doctorIdToUse,
