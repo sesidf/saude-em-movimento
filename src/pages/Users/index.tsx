@@ -441,7 +441,10 @@ export default function Users() {
                 const hasDoctorRole = roles.some((r: any) => accessControl.isDoctorRole(r.role_key || ''));
 
                 if (hasDoctorRole) {
-                  const { data: doctorData } = await chamarApiPost<any>('/api/table/doctors/select', {});
+                  const { data: doctorsArray } = await chamarApiPost<any[]>('/api/table/doctors/select', {
+                    filters: [{ column: 'user_id', value: item.id }]
+                  });
+                  const doctorData = doctorsArray && doctorsArray.length > 0 ? doctorsArray[0] : null;
 
                   if (doctorData) {
                     const profissionalEdicao = {
@@ -457,6 +460,24 @@ export default function Users() {
                       specialty_color: doctorData.specialty?.color || '',
                     };
                     setEditingDoctorId(doctorData.id);
+                    setEditingDoctorData(profissionalEdicao);
+                    setIsDoctorModalOpen(true);
+                    return;
+                  } else {
+                    const novoId = crypto.randomUUID();
+                    const profissionalEdicao = {
+                      id: novoId,
+                      user_id: item.id,
+                      professional_council: 'CRM',
+                      crm: '',
+                      specialty_id: '',
+                      is_active: item.is_active,
+                      full_name: item.full_name,
+                      email: item.email,
+                      specialty_name: '',
+                      specialty_color: '',
+                    };
+                    setEditingDoctorId(novoId);
                     setEditingDoctorData(profissionalEdicao);
                     setIsDoctorModalOpen(true);
                     return;
@@ -621,10 +642,20 @@ export default function Users() {
                   </Button>
 
                   {canCreateUsers ? (
-                    <Button onClick={() => setCreateUserOpen(true)} className="h-9">
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Novo usuário
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button onClick={() => setCreateUserOpen(true)} className="h-9">
+                        <UserPlus className="h-4 w-4 mr-2" />
+                        Novo usuário
+                      </Button>
+                      <Button onClick={() => {
+                        setEditingDoctorId(null);
+                        setEditingDoctorData(null);
+                        setIsDoctorModalOpen(true);
+                      }} className="h-9 bg-blue-600 hover:bg-blue-700">
+                        <Stethoscope className="h-4 w-4 mr-2" />
+                        Novo profissional
+                      </Button>
+                    </div>
                   ) : null}
                 </div>
               </div>
@@ -848,7 +879,15 @@ export default function Users() {
           </DialogContent>
         </Dialog>
 
-        <CreateUserModal accessControl={accessControl} />
+        <CreateUserModal 
+          accessControl={accessControl} 
+          onSwitchToDoctorModal={() => {
+            accessControl.setCreateUserOpen(false);
+            setEditingDoctorId(null);
+            setEditingDoctorData(null);
+            setIsDoctorModalOpen(true);
+          }}
+        />
         <CreateInstitutionModal accessControl={accessControl} />
         <ResetPasswordModal
           open={resetPasswordOpen}

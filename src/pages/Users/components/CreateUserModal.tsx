@@ -25,15 +25,16 @@ const PROFESSIONAL_COUNCIL_OPTIONS = [
   { value: 'OUTRO', label: 'Outro Conselho Profissional' },
 ];
 
-type CreateUserModalProps = {
+interface CreateUserModalProps {
   accessControl: ReturnType<typeof useAccessControl>;
-};
+  onSwitchToDoctorModal?: () => void;
+}
 
-export const CreateUserModal: React.FC<CreateUserModalProps> = ({ accessControl }) => {
+export const CreateUserModal: React.FC<CreateUserModalProps> = ({ accessControl, onSwitchToDoctorModal }) => {
   const {
     createUserOpen, setCreateUserOpen,
     snapshot, userForm, setUserForm,
-    assignableRoles, specialties,
+    assignableRoles,
     isGlobalStructuralRole, isDoctorRole,
     createUser, saving
   } = accessControl;
@@ -74,15 +75,7 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({ accessControl 
     if (!userForm.password || userForm.password.length < 8) {
       newErrors.password = 'A senha temporária deve conter no mínimo 8 caracteres.';
     }
-    if (isDoctor) {
-      if (!userForm.professional_registration?.trim()) {
-        newErrors.professional_registration = 'Informe o número do registro profissional.';
-      }
-      if (!userForm.specialty_id) {
-        newErrors.specialty_id = 'Selecione a especialidade principal.';
-      }
-    }
-
+    
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
@@ -122,14 +115,12 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({ accessControl 
           
           <form onSubmit={handleFormSubmit} className="flex flex-col gap-6">
             
-            {/* SEÇÃO 1: CREDENCIAIS E DADOS DE ACESSO */}
             <div className="space-y-4">
               <h3 className="text-blue-600 font-bold uppercase text-[13px] tracking-wider border-b border-slate-100 pb-1.5">
                 DADOS DE ACESSO
               </h3>
               
               <div className="grid grid-cols-12 gap-4">
-                {/* Nome Completo (12 colunas) */}
                 <div className="col-span-12 space-y-1.5">
                   <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center">
                     Nome Completo <span className="text-red-500 font-bold ml-1">*</span>
@@ -152,7 +143,6 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({ accessControl 
                   {errors.full_name && <span className="text-red-500 text-xs font-semibold mt-1 block">{errors.full_name}</span>}
                 </div>
 
-                {/* E-mail de Login (12 colunas) */}
                 <div className="col-span-12 space-y-1.5">
                   <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center">
                     E-mail (Login de Acesso) <span className="text-red-500 font-bold ml-1">*</span>
@@ -171,7 +161,6 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({ accessControl 
                   {errors.email && <span className="text-red-500 text-xs font-semibold mt-1 block">{errors.email}</span>}
                 </div>
 
-                {/* Perfil Operacional (6 colunas) */}
                 <div className="col-span-12 sm:col-span-6 space-y-1.5">
                   <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center">
                     Perfil do Usuário <span className="text-red-500 font-bold ml-1">*</span>
@@ -179,6 +168,10 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({ accessControl 
                   <Select
                     value={userForm.role_key || undefined}
                     onValueChange={(role_key) => {
+                      if (role_key === 'medico' && onSwitchToDoctorModal) {
+                        onSwitchToDoctorModal();
+                        return;
+                      }
                       setUserForm((current: any) => ({
                         ...current,
                         role_key,
@@ -202,7 +195,6 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({ accessControl 
                   {errors.role_key && <span className="text-red-500 text-xs font-semibold mt-1 block">{errors.role_key}</span>}
                 </div>
 
-                {/* Instituições Vinculadas (6 colunas - Condicional para operadores/recepção) */}
                 <div className="col-span-12 sm:col-span-6 space-y-1.5">
                   <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center">
                     Instituições Vinculadas {requiresInstitution && <span className="text-red-500 font-bold ml-1">*</span>}
@@ -238,7 +230,6 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({ accessControl 
                   )}
                 </div>
 
-                {/* Senha Temporária (12 colunas) */}
                 <div className="col-span-12 space-y-1.5 pt-1">
                   <div className="flex items-center justify-between">
                     <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center">
@@ -267,76 +258,6 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({ accessControl 
                 </div>
               </div>
             </div>
-
-            {/* SEÇÃO 2: DADOS CLÍNICOS / PROFISSIONAIS (CONDICIONAL PARA MÉDICOS) */}
-            {isDoctor && (
-              <div className="space-y-4">
-                <h3 className="text-blue-600 font-bold uppercase text-[13px] tracking-wider border-b border-slate-100 pb-1.5">
-                  DADOS PROFISSIONAIS / CLÍNICOS
-                </h3>
-                
-                <div className="grid grid-cols-12 gap-4">
-                  <div className="col-span-12 sm:col-span-6 space-y-1.5">
-                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center">
-                      Conselho Profissional <span className="text-red-500 font-bold ml-1">*</span>
-                    </label>
-                    <Select
-                      value={userForm.professional_council}
-                      onValueChange={(professional_council) => setUserForm((current: any) => ({ ...current, professional_council }))}
-                    >
-                      <SelectTrigger className="h-11 rounded-2xl bg-slate-50 border-slate-200 text-xs font-semibold focus:border-blue-400">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {PROFESSIONAL_COUNCIL_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="col-span-12 sm:col-span-6 space-y-1.5">
-                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center">
-                      Nº Registro Profissional <span className="text-red-500 font-bold ml-1">*</span>
-                    </label>
-                    <Input
-                      value={userForm.professional_registration}
-                      onChange={(event) => {
-                        setUserForm((current: any) => ({ ...current, professional_registration: event.target.value }));
-                        setErrors(prev => { const next = { ...prev }; delete next.professional_registration; return next; });
-                      }}
-                      required={isDoctor}
-                      placeholder="Ex: 123456"
-                      className={`h-11 rounded-2xl bg-slate-50 border-slate-200 text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:border-blue-400 uppercase ${errors.professional_registration ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-                    />
-                    {errors.professional_registration && <span className="text-red-500 text-xs font-semibold mt-1 block">{errors.professional_registration}</span>}
-                  </div>
-                  
-                  <div className="col-span-12 space-y-1.5">
-                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center">
-                      Especialidade Principal <span className="text-red-500 font-bold ml-1">*</span>
-                    </label>
-                    <Select
-                      value={userForm.specialty_id}
-                      onValueChange={(specialty_id) => {
-                        setUserForm((current: any) => ({ ...current, specialty_id }));
-                        setErrors(prev => { const next = { ...prev }; delete next.specialty_id; return next; });
-                      }}
-                    >
-                      <SelectTrigger className={`h-11 rounded-2xl bg-slate-50 border-slate-200 text-xs font-semibold focus:border-blue-400 ${errors.specialty_id ? 'border-red-500 focus:ring-red-500' : ''}`}>
-                        <SelectValue placeholder="Selecione a especialidade..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {specialties.map((specialty: any) => (
-                          <SelectItem key={specialty.id} value={specialty.id}>{specialty.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {errors.specialty_id && <span className="text-red-500 text-xs font-semibold mt-1 block">{errors.specialty_id}</span>}
-                  </div>
-                </div>
-              </div>
-            )}
 
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
               <Button

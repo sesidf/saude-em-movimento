@@ -55,6 +55,23 @@ export const handleUsersRpc = async (env: any, functionName: string, params: any
       specialty_id: params.p_specialty_id
     };
     
+    // Se for promovido a médico e os dados clínicos estiverem preenchidos, também cadastra na tabela doctors
+    if (params.p_role_key === 'medico' && (metadata.professional_registration || metadata.specialty_id)) {
+      const { DoctorRepository } = await import('../repositories/DoctorRepository');
+      const docRepo = new DoctorRepository(env.DB);
+      
+      const existingDoctor = await repo.queryFirst("SELECT id FROM doctors WHERE user_id = ?", [params.p_user_id]);
+      const doctorIdToUse = existingDoctor ? (existingDoctor as any).id : crypto.randomUUID();
+
+      await docRepo.upsertDoctor({
+        user_id: params.p_user_id,
+        doctor_id: doctorIdToUse,
+        specialty_id: metadata.specialty_id || null,
+        professional_council: metadata.professional_council || 'CRM',
+        crm: metadata.professional_registration || '00'
+      });
+    }
+
     const data = await repo.setUserOperationalProfile(params.p_user_id, metadata);
     return { data, error: null };
   }

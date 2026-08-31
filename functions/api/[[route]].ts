@@ -746,29 +746,43 @@ app.post('/admin-create-user', async (c) => {
       const roleRow = await new BaseRepository(c.env.DB, '').queryFirst('SELECT id FROM roles WHERE key = ?', [role]);
       if (roleRow) role_id = (roleRow as any).id;
     }
-    // Verifica se já existe
+    let userId: string;
+
     const existing = await new BaseRepository(c.env.DB, '').queryFirst('SELECT id FROM users WHERE email = ?', [email]);
-    if (existing) return c.json({ data: null, error: 'Email já cadastrado' }, 409);
-    const hashedPwd = await createPasswordHash(password);
-    const userId = crypto.randomUUID();
-    await c.env.DB.prepare(
-      'INSERT INTO users (id, email, full_name, phone, password_hash, auth_status, is_active, primary_institution_id) VALUES (?, ?, ?, ?, ?, ?, 1, ?)'
-    ).bind(userId, email, full_name, phone || null, hashedPwd, 'active', institution_id || null).run();
+    if (existing) {
+      userId = (existing as any).id;
+    } else {
+      userId = crypto.randomUUID();
+      const hashedPwd = await createPasswordHash(password);
+      await c.env.DB.prepare(
+        'INSERT INTO users (id, email, full_name, phone, password_hash, auth_status, is_active, primary_institution_id) VALUES (?, ?, ?, ?, ?, ?, 1, ?)'
+      ).bind(userId, email, full_name, phone || null, hashedPwd, 'active', institution_id || null).run();
+    }
+
     // Vincula à instituição
     if (institution_id) {
-      await new BaseRepository(c.env.DB, '').execute('INSERT INTO user_institutions (user_id, institution_id) VALUES (?, ?)', [userId, institution_id]);
+      const existingInst = await new BaseRepository(c.env.DB, '').queryFirst('SELECT user_id FROM user_institutions WHERE user_id = ? AND institution_id = ?', [userId, institution_id]);
+      if (!existingInst) {
+        await new BaseRepository(c.env.DB, '').execute('INSERT INTO user_institutions (user_id, institution_id) VALUES (?, ?)', [userId, institution_id]);
+      }
     }
     // Atribui role
     if (role_id) {
-      await new BaseRepository(c.env.DB, '').execute('INSERT INTO user_roles (id, user_id, role_id, institution_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?)', [userId, role_id, institution_id || null]);
+      const existingRole = await new BaseRepository(c.env.DB, '').queryFirst('SELECT id FROM user_roles WHERE user_id = ? AND role_id = ?', [userId, role_id]);
+      if (!existingRole) {
+        await new BaseRepository(c.env.DB, '').execute('INSERT INTO user_roles (id, user_id, role_id, institution_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?)', [userId, role_id, institution_id || null]);
+      }
     }
     // Se for médico, cria o registro na tabela doctors
     if (role === 'medico' || crm) {
-      const doctorId = crypto.randomUUID();
-      await new BaseRepository(c.env.DB, '').execute(
-        'INSERT INTO doctors (id, user_id, specialty_id, professional_council, crm) VALUES (?, ?, ?, ?, ?)',
-        [doctorId, userId, specialty_id || null, professional_council || 'CRM', crm || '00']
-      );
+      const existingDoctor = await new BaseRepository(c.env.DB, '').queryFirst('SELECT id FROM doctors WHERE user_id = ?', [userId]);
+      if (!existingDoctor) {
+        const doctorId = crypto.randomUUID();
+        await new BaseRepository(c.env.DB, '').execute(
+          'INSERT INTO doctors (id, user_id, specialty_id, professional_council, crm) VALUES (?, ?, ?, ?, ?)',
+          [doctorId, userId, specialty_id || null, professional_council || 'CRM', crm || '00']
+        );
+      }
     }
     // Registra na tabela de auditoria
     const payload = c.get('jwtPayload') as any;
@@ -780,6 +794,40 @@ app.post('/admin-create-user', async (c) => {
     ).bind(userId, adminId, adminName).run();
 
     return c.json({ data: { success: true, id: userId }, error: null });
+  } catch (err: any) {
+    return c.json({ data: null, error: err.message }, 500);
+  }
+});
+
+// --- ADMIN DELETE USER ---
+app.post('/admin-delete-user', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { user_id } = body;
+    if (!user_id) return c.json({ data: null, error: 'user_id é obrigatório' }, 400);
+
+    const payload = c.get('jwtPayload') as any;
+    const adminId = payload?.id || payload?.profile?.id || 'admin';
+    if (user_id === adminId) {
+      return c.json({ data: null, error: 'Não é possível excluir o próprio usuário' }, 400);
+    }
+    
+    // Deleta os registros dependentes primeiro (fallback caso D1 não ative PRAGMA foreign_keys ON por padrão)
+    const db = c.env.DB;
+    await db.prepare('DELETE FROM user_permissions WHERE user_id = ?').bind(user_id).run();
+    await db.prepare('DELETE FROM user_roles WHERE user_id = ?').bind(user_id).run();
+    await db.prepare('DELETE FROM user_institutions WHERE user_id = ?').bind(user_id).run();
+    await db.prepare('DELETE FROM doctors WHERE user_id = ?').bind(user_id).run();
+    await db.prepare('DELETE FROM TEXTs WHERE user_id = ?').bind(user_id).run(); // Devido ao typo no schema local
+
+    await db.prepare('DELETE FROM users WHERE id = ?').bind(user_id).run();
+    
+    const adminName = payload?.profile?.full_name || 'System Admin';
+    await db.prepare(
+      "INSERT INTO audit_log (id, table_name, record_id, action, user_id, user_name) VALUES (lower(hex(randomblob(16))), 'users', ?, 'ADMIN_DELETE', ?, ?)"
+    ).bind(user_id, adminId, adminName).run();
+    
+    return c.json({ data: { success: true }, error: null });
   } catch (err: any) {
     return c.json({ data: null, error: err.message }, 500);
   }
