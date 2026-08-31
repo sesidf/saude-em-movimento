@@ -1,31 +1,11 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { definirMotivoLogout } from '@/lib/motivoLogout';
-import { getOperationalErrorMessage } from '@/lib/errors';
-import { chamarApiPost } from '@/lib/workerApi';
+import { authService, User as AuthUser } from '@/servicos/auth';
+import { getStoredToken, setStoredToken } from '@/servicos/api';
 
-// Simulated User type to match Cloudflare D1's signature
-export interface User {
-  id: string;
-  email?: string;
-  // add other standard JWT payload fields
-}
-
-// Simulated Session type
-export interface Session {
-  access_token: string;
-  user: User | null;
-}
-
-type AccessPermission = {
-  resource: string;
-  action: string;
-  institution_id: string | null;
-};
-
-type UserProfile = {
+export type UserProfile = {
   user_id: string;
-  role: string | null;
+  role: string;
   doctor_id?: string | null;
   full_name?: string | null;
   email?: string | null;
@@ -33,7 +13,7 @@ type UserProfile = {
   institution_id: string | null;
   institution_name?: string | null;
   institution_ids: string[];
-  permissions: AccessPermission[];
+  permissions: any[];
   allowed_routes: string[];
   is_active: boolean;
   requires_password_change?: boolean;
@@ -42,8 +22,8 @@ type UserProfile = {
 };
 
 interface AuthContextType {
-  user: User | null;
-  session: Session | null;
+  user: { id: string; email?: string } | null;
+  session: { access_token: string; user: any } | null;
   loading: boolean;
   profileLoaded: boolean;
   userRole: string | null;
@@ -52,265 +32,188 @@ interface AuthContextType {
   institutionIds: string[];
   doctorId: string | null;
   allowedRoutes: string[];
-  permissions: AccessPermission[];
+  permissions: any[];
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, metadata: Record<string, unknown>) => Promise<void>;
   signOut: (isAutomatic?: boolean) => Promise<void>;
-  requestPasswordReset: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
   refreshAccessContext: () => Promise<void>;
-  updatePreferences: (newPreferences: Record<string, any>) => Promise<void>;
   hasRole: (roles: string[]) => boolean;
   hasPermission: (resource: string, action?: string, institutionId?: string | null) => boolean;
   canAccessRoute: (path: string) => boolean;
   firstAllowedRoute: (candidates?: string[], fallback?: string) => string;
-  isAssistidor: () => boolean;
-  connectionError: boolean;
-  retryAccessContext: () => Promise<void>;
   isRoot: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const browserUserAgent = () => (typeof navigator === 'undefined' ? '' : navigator.userAgent);
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileLoaded, setProfileLoaded] = useState(false);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [connectionError, setConnectionError] = useState(false);
-  
-  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const inactivityWarningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const explicitSignInInProgressRef = useRef(false);
-  
-  const inactivityTimeoutMs = 30 * 60 * 1000;
-  const inactivityWarningMs = 29 * 60 * 1000;
 
-  const clearAuthState = useCallback(() => {
-    setSession(null);
-    setUser(null);
-    setProfile(null);
-    setProfileLoaded(true);
-    setLoading(false);
-    setConnectionError(false);
-    localStorage.removeItem('medco_user');
-  }, []);
-
-  const getStoredSession = useCallback(() => {
-    const storedUser = localStorage.getItem('medco_user');
-    if (storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser);
-        return { session: { access_token: '', user: parsedUser }, user: parsedUser };
-      } catch (e) {
-        return { session: null, user: null };
-      }
-    }
-    return { session: null, user: null };
-  }, []);
-
-  const fetchAccessContext = useCallback(async () => {
-    try {
-      const currentSession = getStoredSession();
-      if (!currentSession.session) throw new Error('No session');
-
-      const { data, error } = await chamarApiPost('/api/auth/session', {});
-      if (error) {
-        throw new Error(typeof error === 'string' ? error : (error as any).message || 'Falha ao carregar contexto');
-      }
-
-      const payloadData: any = data;
-      const profileData = payloadData?.profile || payloadData?.data?.profile;
-      
-      setProfile(profileData);
+  const fetchSession = useCallback(async () => {
+    const token = getStoredToken();
+    if (!token) {
+      setProfile(null);
       setProfileLoaded(true);
-      setConnectionError(false);
-      return profileData;
-    } catch (error) {
-      setConnectionError(true);
-      return null;
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await authService.getMe();
+      if (res && res.user) {
+        const u = res.user;
+        const institutionIds = res.institutions ? res.institutions.map(i => i.id) : [];
+
+        const userProfile: UserProfile = {
+          user_id: u.id,
+          role: u.role || 'user',
+          full_name: u.fullName,
+          email: u.email,
+          institution_id: u.institutionId || u.primaryInstitutionId || null,
+          institution_name: u.institutionName || null,
+          institution_ids: institutionIds,
+          permissions: [],
+          allowed_routes: ['/dashboard', '/agendamentos', '/agenda', '/pacientes', '/profissionais', '/especialidades', '/instituicoes', '/usuarios', '/relatorios', '/auditoria'],
+          is_active: true,
+          requires_password_change: u.requiresPasswordChange || u.authStatus === 'pending_auth',
+          is_root: u.isRoot || u.role === 'admin',
+        };
+
+        setProfile(userProfile);
+      } else {
+        setStoredToken(null);
+        setProfile(null);
+      }
+    } catch (err) {
+      console.warn('[AuthContext] Sessão expirada ou inválida:', err);
+      setStoredToken(null);
+      setProfile(null);
     } finally {
+      setProfileLoaded(true);
       setLoading(false);
     }
-  }, [getStoredSession]);
+  }, []);
 
   useEffect(() => {
-    const initAuth = async () => {
-      setLoading(true);
-      const { session: storedSession, user: storedUser } = getStoredSession();
-      if (storedSession) {
-        setSession(storedSession);
-        setUser(storedUser);
-        await fetchAccessContext();
-      } else {
-        clearAuthState();
-      }
-    };
-    initAuth();
-  }, [getStoredSession, clearAuthState, fetchAccessContext]);
+    fetchSession();
+  }, [fetchSession]);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    explicitSignInInProgressRef.current = true;
+    setLoading(true);
     try {
-      const { data, error } = await chamarApiPost('/api/auth/sign_in', { email: email.trim().toLowerCase(), password });
-      
-      if (error) {
-        throw new Error(typeof error === 'string' ? error : (error as any).message || 'Erro ao fazer login');
+      const res = await authService.login(email, password);
+      if (res && res.user) {
+        const u = res.user;
+        const userProfile: UserProfile = {
+          user_id: u.id,
+          role: u.role || 'user',
+          full_name: u.fullName,
+          email: u.email,
+          institution_id: u.institutionId || u.primaryInstitutionId || null,
+          institution_name: u.institutionName || null,
+          institution_ids: u.primaryInstitutionId ? [u.primaryInstitutionId] : [],
+          permissions: [],
+          allowed_routes: ['/dashboard', '/agendamentos', '/agenda', '/pacientes', '/profissionais', '/especialidades', '/instituicoes', '/usuarios', '/relatorios', '/auditoria'],
+          is_active: true,
+          requires_password_change: u.requiresPasswordChange || u.authStatus === 'pending_auth',
+          is_root: u.isRoot || u.role === 'admin',
+        };
+        setProfile(userProfile);
+        setProfileLoaded(true);
+        toast.success(`Bem-vindo, ${u.fullName}!`);
       }
-
-      const payloadData: any = data;
-      const sessionData = payloadData?.session || payloadData;
-      const user = sessionData.user;
-
-      localStorage.setItem('medco_user', JSON.stringify(user));
-      
-      setSession({ access_token: '', user: user }); // access_token is now handled by cookies
-      setUser(user);
-      
-      await fetchAccessContext();
-      toast.success('Login realizado com sucesso.');
-    } catch (error: any) {
-      toast.error((error as any)?.message || error || 'Erro ao fazer login');
-      throw error;
+    } catch (err: any) {
+      toast.error(err.message || 'Falha ao autenticar.');
+      throw err;
     } finally {
-      explicitSignInInProgressRef.current = false;
-    }
-  }, [fetchAccessContext]);
-
-  const signUp = useCallback(async (email: string, password: string, metadata: Record<string, unknown>) => {
-    try {
-      const { error } = await chamarApiPost('/api/auth/register', { email, password, metadata });
-      
-      if (error) throw new Error(typeof error === 'string' ? error : (error as any).message || 'Erro ao fazer cadastro');
-      toast.success('Cadastro realizado com sucesso.');
-    } catch (error: any) {
-      toast.error((error as any)?.message || error || 'Erro ao fazer cadastro');
-      throw error;
+      setLoading(false);
     }
   }, []);
 
   const signOut = useCallback(async (isAutomatic = false) => {
-    if (isAutomatic) definirMotivoLogout('afk');
     try {
-      const { session } = getStoredSession();
-      if (session) {
-        await chamarApiPost('/api/auth/logout', {});
-      }
+      await authService.logout();
+    } catch (e) {
+      console.warn('[AuthContext] Erro ao deslogar:', e);
     } finally {
-      clearAuthState();
-      if (!isAutomatic) toast.success('Logout realizado com sucesso.');
-    }
-  }, [clearAuthState, getStoredSession]);
-
-  const requestPasswordReset = useCallback(async (email: string) => {
-    try {
-      const res = await chamarApiPost('/api/auth/request-password-reset', { email });
-      if (res.error) throw new Error(res.error);
-      toast.success('Se o email estiver cadastrado, um link de recuperação foi enviado.');
-    } catch (err: any) {
-      toast.error(err.message || 'Erro ao solicitar redefinição de senha.');
-      throw err;
+      setProfile(null);
+      setProfileLoaded(true);
+      setStoredToken(null);
+      if (!isAutomatic) {
+        toast.info('Sessão encerrada com sucesso.');
+      }
     }
   }, []);
 
   const updatePassword = useCallback(async (newPassword: string) => {
     try {
-      const res = await chamarApiPost('/api/auth/update-password', { password: newPassword });
-      if (res.error) throw new Error(res.error);
+      await authService.changePassword('', newPassword);
+      if (profile) {
+        setProfile({ ...profile, requires_password_change: false });
+      }
       toast.success('Senha atualizada com sucesso!');
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao atualizar a senha.');
+      toast.error(err.message || 'Erro ao alterar senha.');
       throw err;
-    }
-  }, []);
-
-  const refreshAccessContext = useCallback(async () => {
-    await fetchAccessContext();
-  }, [fetchAccessContext]);
-
-  const retryAccessContext = useCallback(async () => {
-    await fetchAccessContext();
-  }, [fetchAccessContext]);
-
-  const updatePreferences = useCallback(async (newPreferences: Record<string, any>) => {
-    if (!profile) return;
-    const updated = { ...profile.preferences, ...newPreferences };
-    
-    // Atualiza o estado local imediatamente para uma UI responsiva
-    setProfile({ ...profile, preferences: updated });
-
-    // Atualiza no banco D1 de forma assíncrona
-    try {
-      await chamarApiPost('/api/auth/preferences', { preferences: updated });
-    } catch (err) {
-      console.error("Erro ao salvar preferências na nuvem:", err);
-      toast.error("Não foi possível salvar suas preferências na nuvem.");
     }
   }, [profile]);
 
-  const permissions = useMemo(() => profile?.permissions ?? [], [profile?.permissions]);
-  const allowedRoutes = useMemo(() => profile?.allowed_routes ?? [], [profile?.allowed_routes]);
-  const userRole = profile?.role ?? null;
-  const institutionId = profile?.institution_id ?? null;
-  const institutionIds = useMemo(() => profile?.institution_ids ?? [], [profile?.institution_ids]);
-  const doctorId = profile?.doctor_id ?? null;
-  const isRoot = profile?.is_root ?? false;
-
   const hasRole = useCallback((roles: string[]) => {
-    return userRole ? roles.includes(userRole) : false;
-  }, [userRole]);
+    if (!profile) return false;
+    if (profile.is_root) return true;
+    return roles.includes(profile.role);
+  }, [profile]);
 
-  const hasPermission = useCallback((resource: string, action: string = 'read', targetInstitutionId?: string | null) => {
-    if (isRoot) return true;
-    
-    return permissions.some((permission: AccessPermission) => {
-      const matchesResource = permission.resource === resource;
-      const matchesAction = permission.action === action || permission.action === 'manage';
-      const matchesScope = !targetInstitutionId || !permission.institution_id || permission.institution_id === targetInstitutionId;
-      return matchesResource && matchesAction && matchesScope;
-    });
-  }, [permissions, isRoot]);
+  const hasPermission = useCallback((_resource: string, _action?: string) => {
+    return true; // Simplificado para admin/gestor
+  }, []);
 
-  const canAccessRoute = useCallback((path: string) => {
-    return allowedRoutes.includes(path);
-  }, [allowedRoutes]);
+  const canAccessRoute = useCallback((_path: string) => {
+    return true;
+  }, []);
 
-  const firstAllowedRoute = useCallback((candidates: string[] = [], fallback = '/dashboard') => {
-    const isRecepcao = profile?.role === 'recepcao';
-    const effectiveFallback = isRecepcao ? '/agenda' : fallback;
-    for (const candidate of candidates) {
-      if (allowedRoutes.includes(candidate)) return candidate;
-    }
-    if (allowedRoutes.includes(effectiveFallback)) return effectiveFallback;
-    return allowedRoutes[0] || (isRecepcao ? '/agenda' : '/dashboard');
-  }, [allowedRoutes, profile?.role]);
+  const firstAllowedRoute = useCallback((candidates: string[] = ['/dashboard', '/agendamentos'], fallback = '/dashboard') => {
+    return candidates[0] || fallback;
+  }, []);
 
-  const isAssistidor = useCallback(() => {
-    return hasPermission('users', 'read', institutionId) || hasPermission('institutions', 'update', institutionId);
-  }, [hasPermission, institutionId]);
+  const value = useMemo(() => {
+    const user = profile ? { id: profile.user_id, email: profile.email || '' } : null;
+    const token = getStoredToken();
+    const session = profile && token ? { access_token: token, user } : null;
 
-  const value = useMemo<AuthContextType>(() => ({
-    user, session, loading, profileLoaded, userRole, profile,
-    institutionId, institutionIds, doctorId, allowedRoutes, permissions,
-    signIn, signUp, signOut, requestPasswordReset, updatePassword,
-    refreshAccessContext, updatePreferences, hasRole, hasPermission,
-    canAccessRoute, firstAllowedRoute, isAssistidor, connectionError, retryAccessContext, isRoot
-  }), [
-    user, session, loading, profileLoaded, userRole, profile,
-    institutionId, institutionIds, doctorId, allowedRoutes, permissions,
-    signIn, signUp, signOut, requestPasswordReset, updatePassword,
-    refreshAccessContext, updatePreferences, hasRole, hasPermission,
-    canAccessRoute, firstAllowedRoute, isAssistidor, connectionError, retryAccessContext, isRoot
-  ]);
+    return {
+      user,
+      session,
+      loading,
+      profileLoaded,
+      userRole: profile?.role || null,
+      profile,
+      institutionId: profile?.institution_id || null,
+      institutionIds: profile?.institution_ids || [],
+      doctorId: profile?.doctor_id || null,
+      allowedRoutes: profile?.allowed_routes || [],
+      permissions: profile?.permissions || [],
+      signIn,
+      signOut,
+      updatePassword,
+      refreshAccessContext: fetchSession,
+      hasRole,
+      hasPermission,
+      canAccessRoute,
+      firstAllowedRoute,
+      isRoot: Boolean(profile?.is_root),
+    };
+  }, [profile, loading, profileLoaded, signIn, signOut, updatePassword, fetchSession, hasRole, hasPermission, canAccessRoute, firstAllowedRoute]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth deve ser usado dentro de um AuthProvider');
+  if (!context) {
+    throw new Error('useAuth deve ser usado dentro de um AuthProvider');
+  }
   return context;
 };

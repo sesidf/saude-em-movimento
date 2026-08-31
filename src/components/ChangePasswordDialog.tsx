@@ -1,6 +1,8 @@
+"use client";
+
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { chamarApiPost, chamarApiGet } from '@/lib/workerApi';
+import { authService } from '@/servicos/auth';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { PasswordInput } from '@/components/ui/password-input';
@@ -14,12 +16,11 @@ interface ChangePasswordDialogProps {
 }
 
 export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialogProps) {
-  const { user, updatePassword } = useAuth();
+  const { user } = useAuth();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
-
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -55,33 +56,14 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
       return;
     }
 
-    if (!user?.email) {
-      toast.error('Usuário não autenticado.');
-      return;
-    }
-
     setLoading(true);
 
     try {
-      // 1. Validar a senha atual autenticando novamente
-      const { error: signInError } = await chamarApiPost('/api/auth/sign_in', {
-        email: user.email,
-        password: currentPassword,
-      });
-
-      if (signInError) {
-        setErrors({ currentPassword: 'Senha atual incorreta.' });
-        setLoading(false);
-        return;
-      }
-
-      // 2. Atualizar a senha
-      await updatePassword(newPassword);
-      
+      await authService.changePassword(currentPassword, newPassword);
       toast.success('Senha alterada com sucesso!');
       handleOpenChange(false);
     } catch (error: any) {
-      toast.error((error as any)?.message || error || 'Erro ao alterar a senha.');
+      toast.error(error.message || 'Erro ao alterar a senha.');
     } finally {
       setLoading(false);
     }
@@ -97,73 +79,71 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
               Preencha os campos abaixo para atualizar sua senha de acesso.
             </DialogDescription>
           </div>
-          
-          <form onSubmit={handleSubmit} className="flex flex-col gap-8">
-            <div className="space-y-4">
-              <h3 className="text-[13px] font-bold uppercase tracking-wider text-blue-600 border-b border-slate-200 pb-2">
-                Dados de Segurança
-              </h3>
-              
-              <div className="grid grid-cols-1 gap-5">
-                <div className="space-y-1.5">
-                  <Label htmlFor="current-password" className="text-slate-700 font-semibold text-xs uppercase">Senha Atual <span className="text-red-500">*</span></Label>
-                  <PasswordInput
-                    id="current-password"
-                    value={currentPassword}
-                    onChange={(e) => {
-                      setCurrentPassword(e.target.value);
-                      setErrors(prev => { const next = { ...prev }; delete next.currentPassword; return next; });
-                    }}
-                    placeholder="Sua senha atual"
-                    required
-                    className={`delphi-input bg-slate-50 border-slate-200 ${errors.currentPassword ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-                  />
-                  {errors.currentPassword && <span className="text-red-500 text-xs font-semibold mt-1 block">{errors.currentPassword}</span>}
-                </div>
-                
-                <div className="space-y-1.5">
-                  <Label htmlFor="new-password" className="text-slate-700 font-semibold text-xs uppercase">Nova Senha <span className="text-red-500">*</span></Label>
-                  <PasswordInput
-                    id="new-password"
-                    value={newPassword}
-                    onChange={(e) => {
-                      setNewPassword(e.target.value);
-                      setErrors(prev => { const next = { ...prev }; delete next.newPassword; return next; });
-                    }}
-                    placeholder="Mínimo 6 caracteres"
-                    required
-                    minLength={6}
-                    className={`delphi-input bg-slate-50 border-slate-200 ${errors.newPassword ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-                  />
-                  {errors.newPassword && <span className="text-red-500 text-xs font-semibold mt-1 block">{errors.newPassword}</span>}
-                </div>
-                
-                <div className="space-y-1.5">
-                  <Label htmlFor="confirm-password" className="text-slate-700 font-semibold text-xs uppercase">Confirmar Nova Senha <span className="text-red-500">*</span></Label>
-                  <PasswordInput
-                    id="confirm-password"
-                    value={confirmPassword}
-                    onChange={(e) => {
-                      setConfirmPassword(e.target.value);
-                      setErrors(prev => { const next = { ...prev }; delete next.confirmPassword; return next; });
-                    }}
-                    placeholder="Repita a nova senha"
-                    required
-                    minLength={6}
-                    className={`delphi-input bg-slate-50 border-slate-200 ${errors.confirmPassword ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-                  />
-                  {errors.confirmPassword && <span className="text-red-500 text-xs font-semibold mt-1 block">{errors.confirmPassword}</span>}
-                </div>
-              </div>
+
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-slate-700">Senha Atual</Label>
+              <PasswordInput
+                placeholder="••••••••••••"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                required
+                className={`h-11 rounded-2xl bg-slate-50 border-slate-200 text-sm ${
+                  errors.currentPassword ? 'border-red-500' : ''
+                }`}
+              />
+              {errors.currentPassword && (
+                <p className="text-xs text-red-500 font-semibold">{errors.currentPassword}</p>
+              )}
             </div>
 
-            <div className="flex justify-end gap-3 pt-6 mt-2 border-t border-slate-100">
-              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={loading} className="px-6 rounded-lg text-slate-700 font-semibold border-slate-300 hover:bg-slate-100">
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-slate-700">Nova Senha</Label>
+              <PasswordInput
+                placeholder="••••••••••••"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                minLength={6}
+                className={`h-11 rounded-2xl bg-slate-50 border-slate-200 text-sm ${
+                  errors.newPassword ? 'border-red-500' : ''
+                }`}
+              />
+              {errors.newPassword && (
+                <p className="text-xs text-red-500 font-semibold">{errors.newPassword}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-slate-700">Confirmar Nova Senha</Label>
+              <PasswordInput
+                placeholder="••••••••••••"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                minLength={6}
+                className={`h-11 rounded-2xl bg-slate-50 border-slate-200 text-sm ${
+                  errors.confirmPassword ? 'border-red-500' : ''
+                }`}
+              />
+              {errors.confirmPassword && (
+                <p className="text-xs text-red-500 font-semibold">{errors.confirmPassword}</p>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 px-6 font-semibold"
+                onClick={() => handleOpenChange(false)}
+                disabled={loading}
+              >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={loading} className="px-8 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md shadow-blue-500/20">
-                {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                {loading ? 'Salvando...' : 'Salvar Senha'}
+              <Button type="submit" className="h-10 px-6 font-semibold bg-blue-600 hover:bg-blue-700 font-bold" disabled={loading}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Salvar Nova Senha
               </Button>
             </div>
           </form>

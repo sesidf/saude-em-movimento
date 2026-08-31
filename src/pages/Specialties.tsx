@@ -2,14 +2,13 @@
 
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { chamarApiPost, chamarApiGet, clearApiCache } from '@/lib/workerApi';
+import { specialtyService, Specialty } from '@/servicos/specialties';
+import { doctorService, Doctor } from '@/servicos/doctors';
 import { cn } from '@/lib/utils';
 import { CompactDataGrid, type CompactDataGridColumn } from '@/components/CompactDataGrid';
 import { Button } from '@/components/ui/button';
 import { ActionButton } from '@/components/ui/action-button';
 import { FormSectionTitle, FormGrid, FormField } from '@/components/ui/standard-form';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -29,18 +28,8 @@ const Tooth = createLucideIcon('Tooth', [
   ['path', { d: 'M18 6c-.9-2.5-4-3-6-1-2-2-5.1-1.5-6 1-.8 2.1-.3 4.8.8 6.5C8 14.5 8 16 8 17c0 1.5 1.5 3 3 3 1 0 1-1 1-3 .5 1.5 1.5 3 3 3 1.5 0 3-1.5 3-3 0-1 0-2.5 1.2-4.5 1.1-1.7 1.6-4.4.8-6.5z', key: '1' }]
 ]);
 import { toast } from 'sonner';
-import { buildIdempotencyKey } from '@/lib/idempotency';
 import { getAvatarColor, getInitials, normalizarEntradaTexto } from '@/utils/formatters';
 import { useConfirm } from '@/hooks/useConfirm';
-
-interface Specialty {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  color: string;
-  is_active: boolean;
-}
 
 export const SPECIALTY_ICONS: Record<string, LucideIcon> = {
   heart: Heart,
@@ -82,10 +71,10 @@ export const SPECIALTY_ICONS: Record<string, LucideIcon> = {
 };
 
 const Specialties = () => {
-  const { hasPermission, institutionId } = useAuth();
+  const { hasRole } = useAuth();
   const { confirm, ConfirmationDialog } = useConfirm();
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
-  const [doctorsCatalog, setDoctorsCatalog] = useState<any[]>([]);
+  const [doctorsCatalog, setDoctorsCatalog] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSpecialtyId, setEditingSpecialtyId] = useState<string | null>(null);
@@ -99,54 +88,37 @@ const Specialties = () => {
     color: '#3B82F6',
   });
 
-  const canReadSpecialties = hasPermission('specialties', 'read', institutionId) || hasPermission('specialties', 'update', institutionId);
-  const canManageSpecialties =
-    hasPermission('specialties', 'create', institutionId) ||
-    hasPermission('specialties', 'update', institutionId) ||
-    hasPermission('specialties', 'manage', institutionId);
+  const canManageSpecialties = hasRole(['admin', 'root']);
 
   const fetchSpecialties = useCallback(async () => {
     try {
-      const [specialtiesRes, doctorsRes] = await Promise.all([
-        chamarApiPost('/api/rpc/list_specialties_catalog', {
-          p_search: searchTerm.trim() || null,
-          p_include_inactive: true,
-        }),
-        chamarApiPost('/api/rpc/list_doctors_catalog', {
-          p_search: null,
-          p_include_inactive: false,
-        })
+      setLoading(true);
+      const [specs, docs] = await Promise.all([
+        specialtyService.list(true),
+        doctorService.list({ showAll: true }),
       ]);
-
-      if (specialtiesRes.error) throw specialtiesRes.error;
-      if (doctorsRes.error) throw doctorsRes.error;
-
-      setSpecialties((specialtiesRes.data as unknown as Specialty[] | null) || []);
-      setDoctorsCatalog((doctorsRes.data as unknown as any[] | null) || []);
+      setSpecialties(specs || []);
+      setDoctorsCatalog(docs || []);
     } catch (error) {
       console.error('Erro ao buscar especialidades/profissionais:', error);
       toast.error('Erro ao carregar especialidades');
     } finally {
       setLoading(false);
     }
-  }, [searchTerm]);
+  }, []);
 
   useEffect(() => {
-    if (canReadSpecialties) {
-      void fetchSpecialties();
-    } else {
-      setLoading(false);
-    }
-  }, [canReadSpecialties, fetchSpecialties]);
+    fetchSpecialties();
+  }, [fetchSpecialties]);
 
   const handleEditSpecialty = useCallback((specialty: Specialty) => {
     setEditingSpecialtyId(specialty.id);
     setErrors({});
     setFormData({
       name: specialty.name,
-      description: specialty.description,
-      icon: specialty.icon,
-      color: specialty.color,
+      description: specialty.description || '',
+      icon: specialty.icon || 'stethoscope',
+      color: specialty.color || '#3B82F6',
     });
     setIsDialogOpen(true);
   }, []);
@@ -167,85 +139,54 @@ const Specialties = () => {
     setErrors({});
 
     try {
-      const p_idempotency_key = await buildIdempotencyKey('upsert_specialty', {
-        specialty_id: editingSpecialtyId,
-        ...formData,
-      });
+      if (editingSpecialtyId) {
+        await specialtyService.update(editingSpecialtyId, {
+          name: formData.name.trim().toUpperCase(),
+          description: formData.description || null,
+          icon: formData.icon || null,
+          color: formData.color || null,
+        });
+        toast.success('Especialidade atualizada com sucesso!');
+      } else {
+        await specialtyService.create({
+          name: formData.name.trim().toUpperCase(),
+          description: formData.description || null,
+          icon: formData.icon || null,
+          color: formData.color || null,
+        });
+        toast.success('Especialidade criada com sucesso!');
+      }
 
-      const { error } = await chamarApiPost('/api/rpc/upsert_specialty', {
-        p_specialty_id: editingSpecialtyId,
-        p_name: formData.name.trim().toUpperCase(),
-        p_description: formData.description || null,
-        p_icon: formData.icon || null,
-        p_color: formData.color || null,
-        p_is_active: editingSpecialtyId ? specialties.find((item) => item.id === editingSpecialtyId)?.is_active ?? true : true,
-        p_idempotency_key,
-      });
-
-      if (error) throw error;
-      toast.success(editingSpecialtyId ? 'Especialidade atualizada com sucesso!' : 'Especialidade criada com sucesso!');
       setIsDialogOpen(false);
       resetForm();
-      clearApiCache('/api/rpc/list_specialties_catalog');
       await fetchSpecialties();
     } catch (error: any) {
       console.error('Erro ao salvar especialidade:', error);
-      let message = 'Erro ao salvar especialidade';
-      
-      if (error?.code === '23505' || error?.message?.includes('duplicate key')) {
-        message = 'Já existe uma especialidade com este nome.';
-      } else if (error?.message) {
-        message = (error as any)?.message || error;
-      } else if (error instanceof Error) {
-        message = (error as any)?.message || error;
-      }
-      
-      toast.error(message);
+      toast.error(error.message || 'Erro ao salvar especialidade');
     }
   };
 
-  const handleToggleActive = useCallback(async (id: string, isActive: boolean) => {
+  const handleToggleActive = useCallback(async (id: string, isActive: number | boolean) => {
+    const activeBool = Boolean(isActive);
     const confirmed = await confirm(
-      isActive
+      activeBool
         ? 'Confirmar desativação desta especialidade?'
         : 'Confirmar ativação desta especialidade?',
     );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     try {
-      const p_idempotency_key = await buildIdempotencyKey('set_specialty_active', {
-        specialty_id: id,
-        is_active: !isActive,
-      });
-
-      const { data, error } = await chamarApiPost('/api/rpc/set_specialty_active', {
-        p_specialty_id: id,
-        p_is_active: !isActive,
-        p_idempotency_key,
-      });
-
-      if (error) throw error;
-      const payload = (data || {}) as { success?: boolean; specialty?: Specialty | null };
-      if (!payload.success || !payload.specialty || payload.specialty.is_active !== !isActive) {
-        throw new Error('O backend nao confirmou a mudanca real de status da especialidade.');
-      }
-
-      setSpecialties((current) => current.map((specialty) => (
-        specialty.id === id
-          ? { ...specialty, is_active: payload.specialty?.is_active ?? specialty.is_active }
-          : specialty
-      )));
-      toast.success(isActive ? 'Especialidade desativada' : 'Especialidade ativada');
-      clearApiCache('/api/rpc/list_specialties_catalog');
-      await fetchSpecialties();
-    } catch (error) {
+      await specialtyService.update(id, { is_active: !activeBool });
+      setSpecialties((current) =>
+        current.map((s) => (s.id === id ? { ...s, is_active: !activeBool } : s))
+      );
+      toast.success(activeBool ? 'Especialidade desativada' : 'Especialidade ativada');
+    } catch (error: any) {
       console.error('Erro ao alterar status:', error);
-      toast.error('Erro ao alterar status');
+      toast.error(error.message || 'Erro ao alterar status');
     }
-  }, [fetchSpecialties]);
+  }, [confirm]);
 
   const [statusFilter, setStatusFilter] = useState<'ativos' | 'inativos' | 'todos'>('ativos');
 
@@ -261,8 +202,11 @@ const Specialties = () => {
   };
 
   const filteredSpecialties = specialties.filter((specialty) => {
-    if (statusFilter === 'ativos') return specialty.is_active;
-    if (statusFilter === 'inativos') return !specialty.is_active;
+    const matchesSearch = specialty.name.toLowerCase().includes(searchTerm.toLowerCase());
+    if (!matchesSearch) return false;
+    const isAct = Boolean(specialty.is_active);
+    if (statusFilter === 'ativos') return isAct;
+    if (statusFilter === 'inativos') return !isAct;
     return true;
   });
 
@@ -274,7 +218,8 @@ const Specialties = () => {
       filterable: true,
       filterValue: (specialty) => specialty.name,
       render: (specialty) => {
-        const IconComp = SPECIALTY_ICONS[specialty.icon] || Palette;
+        const IconComp = SPECIALTY_ICONS[specialty.icon || ''] || Palette;
+        const isAct = Boolean(specialty.is_active);
         return (
           <div className="flex min-w-[260px] items-center gap-3">
             <div 
@@ -285,7 +230,7 @@ const Specialties = () => {
             </div>
             <div className="flex flex-col min-w-0">
               <p className="truncate font-semibold text-slate-900" title={specialty.name}>{specialty.name}</p>
-              <p className={`text-[11px] font-semibold ${specialty.is_active ? 'text-green-700' : 'text-red-700'}`}>{specialty.is_active ? 'Ativa' : 'Inativa'}</p>
+              <p className={`text-[11px] font-semibold ${isAct ? 'text-green-700' : 'text-red-700'}`}>{isAct ? 'Ativa' : 'Inativa'}</p>
             </div>
           </div>
         );
@@ -306,13 +251,13 @@ const Specialties = () => {
           <div className="flex items-center gap-2.5">
             <div className="flex flex-wrap -space-x-2.5">
               {specDocs.map((doc, idx) => {
-                const initials = getInitials(doc.full_name);
-                const colorClass = getAvatarColor(doc.full_name);
+                const initials = getInitials(doc.name);
+                const colorClass = getAvatarColor(doc.name);
                 return (
                   <div
                     key={doc.id || idx}
                     className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-black border-2 border-white shadow-sm shrink-0 ring-1 ring-slate-200/50 ${colorClass}`}
-                    title={doc.full_name}
+                    title={doc.name}
                   >
                     {initials}
                   </div>
@@ -326,7 +271,6 @@ const Specialties = () => {
         );
       }
     },
-
     {
       key: 'actions',
       header: 'Ações',
@@ -346,24 +290,13 @@ const Specialties = () => {
               onClick={() => { void handleToggleActive(specialty.id, specialty.is_active); }} 
               icon={<Power className="h-4 w-4" />} 
               titleTooltip={specialty.is_active ? "Desativar Especialidade" : "Ativar Especialidade"} 
-              danger={specialty.is_active} 
+              danger={Boolean(specialty.is_active)} 
             />
           </div>
         ) : null
       ),
     },
   ], [canManageSpecialties, handleEditSpecialty, handleToggleActive, doctorsCatalog]);
-
-  if (!canReadSpecialties) {
-    return (
-      <div className="pt-20 pb-16 px-4 min-h-screen bg-slate-100 flex items-center justify-center">
-        <div className="text-center text-slate-500">
-          <p>Acesso negado</p>
-        </div>
-      </div>
-    );
-  }
-
 
   return (
     <div className="h-full min-h-0 bg-slate-100 px-3 pb-3">
@@ -433,110 +366,110 @@ const Specialties = () => {
                     <DialogDescription className="text-slate-500 font-medium">Preencha os dados abaixo para cadastrar ou atualizar a especialidade.</DialogDescription>
                   </div>
                   <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-                      <div className="space-y-4">
-                        <FormSectionTitle>Dados da Especialidade</FormSectionTitle>
-                        
-                        <FormGrid>
-                          <FormField label="Nome" required className="md:col-span-12" error={errors.name}>
-                            <Input
-                              id="name"
-                              value={formData.name}
-                              onChange={(event) => {
-                                setFormData({ ...formData, name: event.target.value.toUpperCase() });
-                                setErrors(prev => { const next = { ...prev }; delete next.name; return next; });
-                              }}
-                              onBlur={(event) => setFormData({ ...formData, name: normalizarEntradaTexto(event.target.value) })}
-                              required
-                              placeholder="EX: PEDIATRIA"
-                              style={{ textTransform: 'uppercase' }}
-                              className={`h-11 rounded-2xl bg-slate-50 border-slate-200 text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:border-blue-400 transition-all ${errors.name ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-                            />
-                          </FormField>
+                    <div className="space-y-4">
+                      <FormSectionTitle>Dados da Especialidade</FormSectionTitle>
+                      
+                      <FormGrid>
+                        <FormField label="Nome" required className="md:col-span-12" error={errors.name}>
+                          <Input
+                            id="name"
+                            value={formData.name}
+                            onChange={(event) => {
+                              setFormData({ ...formData, name: event.target.value.toUpperCase() });
+                              setErrors(prev => { const next = { ...prev }; delete next.name; return next; });
+                            }}
+                            onBlur={(event) => setFormData({ ...formData, name: normalizarEntradaTexto(event.target.value) })}
+                            required
+                            placeholder="EX: PEDIATRIA"
+                            style={{ textTransform: 'uppercase' }}
+                            className={`h-11 rounded-2xl bg-slate-50 border-slate-200 text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:border-blue-400 transition-all ${errors.name ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                          />
+                        </FormField>
 
-                          <FormField label="Ícone" className="md:col-span-6">
-                            <div className="grid grid-cols-6 gap-2 h-[180px] overflow-y-auto p-2.5 rounded-2xl border border-slate-200 bg-slate-50/60">
-                              {Object.entries(SPECIALTY_ICONS).map(([iconName, IconComp]) => {
-                                const isSelected = formData.icon === iconName;
-                                return (
-                                  <button
-                                    key={iconName}
-                                    type="button"
-                                    onClick={() => setFormData({ ...formData, icon: iconName })}
-                                    className={cn(
-                                      "h-10 w-full rounded-2xl flex items-center justify-center border-2 transition-all cursor-pointer",
-                                      isSelected
-                                        ? "border-blue-600 bg-blue-50 text-blue-600 shadow-xs"
-                                        : "border-slate-200 bg-white hover:bg-slate-100/70 text-slate-500 hover:border-slate-300"
-                                    )}
-                                    title={iconName}
-                                  >
-                                    <IconComp className="h-4 w-4" />
-                                  </button>
-                                );
-                              })}
+                        <FormField label="Ícone" className="md:col-span-6">
+                          <div className="grid grid-cols-6 gap-2 h-[180px] overflow-y-auto p-2.5 rounded-2xl border border-slate-200 bg-slate-50/60">
+                            {Object.entries(SPECIALTY_ICONS).map(([iconName, IconComp]) => {
+                              const isSelected = formData.icon === iconName;
+                              return (
+                                <button
+                                  key={iconName}
+                                  type="button"
+                                  onClick={() => setFormData({ ...formData, icon: iconName })}
+                                  className={cn(
+                                    "h-10 w-full rounded-2xl flex items-center justify-center border-2 transition-all cursor-pointer",
+                                    isSelected
+                                      ? "border-blue-600 bg-blue-50 text-blue-600 shadow-xs"
+                                      : "border-slate-200 bg-white hover:bg-slate-100/70 text-slate-500 hover:border-slate-300"
+                                  )}
+                                  title={iconName}
+                                >
+                                  <IconComp className="h-4 w-4" />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </FormField>
+
+                        <FormField label="Cor de Destaque" className="md:col-span-6">
+                          <div className="flex flex-col gap-2.5 h-[180px]">
+                            <div className="flex items-center gap-2">
+                              <input
+                                id="color"
+                                type="color"
+                                value={formData.color}
+                                onChange={(event) => setFormData({ ...formData, color: event.target.value })}
+                                className="w-11 h-11 rounded-2xl border-2 border-slate-200 bg-white p-1 cursor-pointer transition-all shadow-xs shrink-0"
+                                title="Escolher cor personalizada"
+                              />
+                              <Input
+                                type="text"
+                                value={formData.color}
+                                onChange={(event) => setFormData({ ...formData, color: event.target.value.toUpperCase() })}
+                                maxLength={7}
+                                placeholder="#3B82F6"
+                                className="h-11 rounded-2xl bg-slate-50 border-slate-200 text-xs font-bold font-mono text-slate-800 placeholder:text-slate-400 focus:border-blue-400 flex-1 uppercase"
+                              />
                             </div>
-                          </FormField>
-
-                          <FormField label="Cor de Destaque" className="md:col-span-6">
-                            <div className="flex flex-col gap-2.5 h-[180px]">
-                              <div className="flex items-center gap-2">
-                                <input
-                                  id="color"
-                                  type="color"
-                                  value={formData.color}
-                                  onChange={(event) => setFormData({ ...formData, color: event.target.value })}
-                                  className="w-11 h-11 rounded-2xl border-2 border-slate-200 bg-white p-1 cursor-pointer transition-all shadow-xs shrink-0"
-                                  title="Escolher cor personalizada"
+                            <div className="grid grid-cols-8 gap-1.5 w-full p-2.5 rounded-2xl border border-slate-200 bg-slate-50/60 flex-1 items-center content-center">
+                              {[
+                                '#3B82F6', '#06B6D4', '#10B981', '#8B5CF6', '#F59E0B', '#EC4899', '#6366F1', '#0EA5E9',
+                                '#EF4444', '#F97316', '#EAB308', '#84CC16', '#22C55E', '#14B8A6', '#D946EF', '#F43F5E',
+                                '#0284C7', '#059669', '#4F46E5', '#BE123C', '#9A3412', '#166534', '#0F766E', '#6B21A8',
+                                '#4338CA', '#0369A1', '#15803D', '#B91C1C', '#C2410C', '#A21CAF', '#6D28D9', '#0F172A',
+                              ].map((preset) => (
+                                <button
+                                  key={preset}
+                                  type="button"
+                                  onClick={() => setFormData({ ...formData, color: preset })}
+                                  className={cn(
+                                    "aspect-square w-full rounded-md transition-all hover:scale-115 shadow-2xs border cursor-pointer",
+                                    formData.color.toUpperCase() === preset.toUpperCase() ? "ring-2 ring-blue-500 ring-offset-1 border-white scale-110" : "border-slate-200/80"
+                                  )}
+                                  style={{ backgroundColor: preset }}
+                                  title={preset}
                                 />
-                                <Input
-                                  type="text"
-                                  value={formData.color}
-                                  onChange={(event) => setFormData({ ...formData, color: event.target.value.toUpperCase() })}
-                                  maxLength={7}
-                                  placeholder="#3B82F6"
-                                  className="h-11 rounded-2xl bg-slate-50 border-slate-200 text-xs font-bold font-mono text-slate-800 placeholder:text-slate-400 focus:border-blue-400 flex-1 uppercase"
-                                />
-                              </div>
-                              <div className="grid grid-cols-8 gap-1.5 w-full p-2.5 rounded-2xl border border-slate-200 bg-slate-50/60 flex-1 items-center content-center">
-                                {[
-                                  '#3B82F6', '#06B6D4', '#10B981', '#8B5CF6', '#F59E0B', '#EC4899', '#6366F1', '#0EA5E9',
-                                  '#EF4444', '#F97316', '#EAB308', '#84CC16', '#22C55E', '#14B8A6', '#D946EF', '#F43F5E',
-                                  '#0284C7', '#059669', '#4F46E5', '#BE123C', '#9A3412', '#166534', '#0F766E', '#6B21A8',
-                                  '#4338CA', '#0369A1', '#15803D', '#B91C1C', '#C2410C', '#A21CAF', '#6D28D9', '#0F172A',
-                                ].map((preset) => (
-                                  <button
-                                    key={preset}
-                                    type="button"
-                                    onClick={() => setFormData({ ...formData, color: preset })}
-                                    className={cn(
-                                      "aspect-square w-full rounded-md transition-all hover:scale-115 shadow-2xs border cursor-pointer",
-                                      formData.color.toUpperCase() === preset.toUpperCase() ? "ring-2 ring-blue-500 ring-offset-1 border-white scale-110" : "border-slate-200/80"
-                                    )}
-                                    style={{ backgroundColor: preset }}
-                                    title={preset}
-                                  />
-                                ))}
-                              </div>
+                              ))}
                             </div>
-                          </FormField>
-                        </FormGrid>
-                      </div>
+                          </div>
+                        </FormField>
+                      </FormGrid>
+                    </div>
 
-                      <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-10 px-6 font-semibold"
-                          onClick={() => setIsDialogOpen(false)}
-                        >
-                          Cancelar
-                        </Button>
-                        <Button type="submit" disabled={!canManageSpecialties} className="h-10 px-6 font-semibold bg-blue-600 hover:bg-blue-700">
-                          {editingSpecialtyId ? 'Atualizar' : 'Criar'}
-                        </Button>
-                      </div>
-                    </form>
-                  </div>
+                    <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-10 px-6 font-semibold"
+                        onClick={() => setIsDialogOpen(false)}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button type="submit" disabled={!canManageSpecialties} className="h-10 px-6 font-semibold bg-blue-600 hover:bg-blue-700">
+                        {editingSpecialtyId ? 'Atualizar' : 'Criar'}
+                      </Button>
+                    </div>
+                  </form>
+                </div>
               </DialogContent>
             </Dialog>
           </div>
@@ -554,56 +487,6 @@ const Specialties = () => {
           pagination={true}
           resetPaginationDependency={searchTerm + statusFilter}
         />
-
-        <div className="hidden">
-          {filteredSpecialties.map((specialty) => {
-            const IconComp = SPECIALTY_ICONS[specialty.icon] || Palette;
-            return (
-            <Card key={specialty.id} className={`hover:shadow-lg transition-shadow border-slate-300 ${!specialty.is_active ? 'opacity-60' : ''}`}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="h-10 w-10 rounded-full flex items-center justify-center border-2"
-                    style={{ backgroundColor: `${specialty.color}20`, borderColor: specialty.color }}
-                  >
-                    <IconComp className="h-5 w-5" style={{ color: specialty.color }} />
-                  </div>
-                  <CardTitle className="text-lg">{specialty.name}</CardTitle>
-                </div>
-                <Badge variant={specialty.is_active ? 'default' : 'secondary'} className="border-slate-300">
-                  {specialty.is_active ? 'Ativa' : 'Inativa'}
-                </Badge>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-slate-600 mb-4 line-clamp-2">
-                  {specialty.description}
-                </p>
-                {canManageSpecialties && (
-                  <div className="flex justify-between gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEditSpecialty(specialty)}
-                      className="flex-1"
-                    >
-                      <Edit2 className="h-4 w-4 mr-1" />
-                      Editar
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => { void handleToggleActive(specialty.id, specialty.is_active); }}
-                      className={!specialty.is_active ? 'text-green-600 hover:text-green-700' : 'text-red-600 hover:text-red-700'}
-                    >
-                      <Power className="h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            );
-          })}
-        </div>
       </div>
       <ConfirmationDialog />
     </div>

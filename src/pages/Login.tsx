@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { PasswordInput } from '@/components/ui/password-input';
 import { useNavigate } from 'react-router-dom';
 import { lerELimparMotivoLogout } from '@/lib/motivoLogout';
-import { chamarApiPost, chamarApiGet } from '@/lib/workerApi';
 import { Clock, X, Mail, Lock } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -15,7 +14,7 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const { user, profile, refreshAccessContext, updatePassword, signOut, signIn } = useAuth();
+  const { user, profile, updatePassword, signOut, signIn } = useAuth();
   const [precisaAlterarSenha, setPrecisaAlterarSenha] = useState(false);
   const [novaSenha, setNovaSenha] = useState('');
   const [confirmarNovaSenha, setConfirmarNovaSenha] = useState('');
@@ -44,7 +43,7 @@ const Login = () => {
     const motivo = lerELimparMotivoLogout();
     if (motivo === 'afk') {
       setMotivoInatividade('Você foi desconectado automaticamente por inatividade para manter os dados seguros.');
-      toast.warning('Sessão expirada: Você foi desconectado por inatividade para manter sua conta segura.', { id: 'afk-logout-toast', duration: 7000 });
+      toast.warning('Sessão expirada: Você foi desconectado por inatividade.', { id: 'afk-logout-toast', duration: 7000 });
     } else if (motivo === 'sessao_invalida') {
       toast.error('Sessão inválida. Faça login novamente.', { duration: 7000 });
     }
@@ -53,10 +52,10 @@ const Login = () => {
   useEffect(() => {
     if (user && profile?.requires_password_change) {
       setPrecisaAlterarSenha(true);
-    } else {
-      setPrecisaAlterarSenha(false);
+    } else if (user && !profile?.requires_password_change) {
+      navigate('/dashboard');
     }
-  }, [user, profile?.requires_password_change]);
+  }, [user, profile, navigate]);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,25 +65,14 @@ const Login = () => {
     }
 
     setLoading(true);
-    
+
     try {
       await signIn(email, senha);
-      
       sessionStorage.removeItem('medco_failed_logins_count');
       sessionStorage.removeItem('medco_lockout_until');
-
-      // Busca contexto imediato do AuthState para decidir se exibe o formulário ou se redireciona
-      const { data } = await chamarApiPost('/api/auth/session', {});
-      const profile = (data as any)?.profile;
-      if (profile) {
-        if (profile.requires_password_change) {
-          setPrecisaAlterarSenha(true);
-        } else {
-          navigate('/');
-        }
-      }
+      navigate('/dashboard');
     } catch (error: any) {
-      console.error('Erro no login com email:', error);
+      console.error('Erro no login:', error);
       const currentAttempts = Number(sessionStorage.getItem('medco_failed_logins_count') || 0) + 1;
       sessionStorage.setItem('medco_failed_logins_count', String(currentAttempts));
 
@@ -120,8 +108,8 @@ const Login = () => {
       return;
     }
 
-    if (novaSenha.length < 8) {
-      toast.error('A nova senha deve ter no mínimo 8 caracteres para conformidade com as diretrizes de segurança.');
+    if (novaSenha.length < 6) {
+      toast.error('A nova senha deve ter no mínimo 6 caracteres.');
       return;
     }
 
@@ -129,11 +117,8 @@ const Login = () => {
 
     try {
       await updatePassword(novaSenha);
-      
-      await refreshAccessContext();
-      // Garantia de 100% de que a UI inteira será resetada e o usuário irá para a tela inicial correta
-      window.location.href = '/'; 
-      window.location.reload();
+      setPrecisaAlterarSenha(false);
+      navigate('/dashboard');
     } catch (error: any) {
       console.error('Erro ao atualizar senha:', error);
     } finally {
@@ -191,9 +176,9 @@ const Login = () => {
                     value={novaSenha}
                     onChange={(e) => setNovaSenha(e.target.value)}
                     required
-                    minLength={8}
+                    minLength={6}
                     className="w-full !h-[58px] pl-12 pr-12 rounded-2xl border-2 border-slate-200 bg-slate-50/50 hover:bg-white hover:border-slate-300 focus:bg-white text-[16px] font-medium text-slate-800 focus:outline-none focus:ring-4 focus:ring-[#00427A]/10 focus:border-[#00427A] transition-all duration-200 placeholder:text-slate-400 shadow-xs"
-                    placeholder="Mínimo 8 caracteres"
+                    placeholder="Mínimo 6 caracteres"
                   />
                 </div>
               </div>
@@ -209,7 +194,7 @@ const Login = () => {
                     value={confirmarNovaSenha}
                     onChange={(e) => setConfirmarNovaSenha(e.target.value)}
                     required
-                    minLength={8}
+                    minLength={6}
                     className="w-full !h-[58px] pl-12 pr-12 rounded-2xl border-2 border-slate-200 bg-slate-50/50 hover:bg-white hover:border-slate-300 focus:bg-white text-[16px] font-medium text-slate-800 focus:outline-none focus:ring-4 focus:ring-[#00427A]/10 focus:border-[#00427A] transition-all duration-200 placeholder:text-slate-400 shadow-xs"
                     placeholder="Repita a nova senha"
                   />
@@ -309,7 +294,7 @@ const Login = () => {
         </div>
       </section>
 
-      {/* Tooltip de Inatividade - Canto Inferior Direito */}
+      {/* Tooltip de Inatividade */}
       {motivoInatividade && (
         <div className="fixed bottom-6 right-6 z-[10002] max-w-[360px] bg-amber-50/95 backdrop-blur-md text-amber-900 p-4 rounded-2xl border border-amber-200/90 flex items-start gap-3 text-left leading-relaxed animate-in slide-in-from-bottom-5 fade-in duration-500 shadow-[0_12px_32px_rgba(0,0,0,0.12)]">
           <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
