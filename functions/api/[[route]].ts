@@ -757,6 +757,14 @@ app.post('/admin-create-user', async (c) => {
       await c.env.DB.prepare(
         'INSERT INTO users (id, email, full_name, phone, password_hash, auth_status, is_active, primary_institution_id) VALUES (?, ?, ?, ?, ?, ?, 1, ?)'
       ).bind(userId, email, full_name, phone || null, hashedPwd, 'active', institution_id || null).run();
+
+      // INSERT DUMMY PROFILE TO SATISFY LEGACY FOREIGN KEYS IN CLINICAL TABLES (e.g. doctors, patients)
+      const nameParts = full_name.split(' ');
+      const firstName = nameParts[0];
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : ' ';
+      await c.env.DB.prepare(
+        'INSERT INTO profiles (id, email, first_name, last_name, role, phone) VALUES (?, ?, ?, ?, ?, ?)'
+      ).bind(userId, email, firstName, lastName, role || null, phone || null).run();
     }
 
     // Vincula à instituição

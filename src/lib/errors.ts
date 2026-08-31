@@ -116,7 +116,7 @@ const traduzirErro = (msg: string, fallback = 'Ocorreu um erro na operação.'):
     text.includes('foreign key constraint') ||
     text.includes('violates foreign key')
   ) {
-    return 'Este item não pode ser excluído pois está sendo usado em outras partes do sistema.';
+    return 'Falha de integridade: O item referenciado não existe ou está sendo usado em outras partes do sistema.';
   }
 
   if (
@@ -204,8 +204,8 @@ export const getOperationalErrorMessage = async (error: unknown, fallback = 'Oco
     }
   }
 
-  if (error instanceof Error && (error as any)?.message || error.trim()) {
-    return traduzirErro((error as any)?.message || error, fallback);
+  if (error instanceof Error && error.message) {
+    return traduzirErro(error.message, fallback);
   }
 
   return fallback;
@@ -229,8 +229,8 @@ export const getErrorMessage = (error: unknown, fallback = 'Ocorreu um erro na o
     }
   }
 
-  if (error instanceof Error && (error as any)?.message || error.trim()) {
-    return traduzirErro((error as any)?.message || error, fallback);
+  if (error instanceof Error && error.message) {
+    return traduzirErro(error.message, fallback);
   }
 
   return fallback;
