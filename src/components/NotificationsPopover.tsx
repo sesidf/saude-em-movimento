@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useAuth } from '@/contexts/AuthContext';
+import { appointmentService } from '@/servicos/appointments';
 import { chamarApiPost, chamarApiGet } from '@/lib/workerApi';
 
 interface Agendamento {
@@ -141,13 +142,14 @@ const NotificationsPopover = ({ expanded }: NotificationsPopoverProps = {}) => {
   const buscarAgendamentos = useCallback(async () => {
     setCarregando(true);
     try {
-      const { data, error } = await chamarApiPost('/api/rpc/list_notifications_snapshot', { p_limit: 9999 });
-      if (error) throw error;
+      const today = new Date().toISOString().split('T')[0];
+      const data = await appointmentService.list({ date: today });
 
-      const itens = ((data as { items?: Agendamento[] } | null)?.items ?? []).map((a) => ({
+      const itens = (data || []).map((a) => ({
         id: a.id,
         patient_name: a.patient_name || 'Paciente',
         doctor_name: a.doctor_name || 'Médico',
+        doctor_id: a.doctor_id,
         appointment_date: a.appointment_date,
         status: a.status,
       }));
