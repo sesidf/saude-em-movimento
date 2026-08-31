@@ -175,9 +175,10 @@ CREATE TABLE IF NOT EXISTS doctor_availability (
 );
 
 CREATE TABLE IF NOT EXISTS schedule_blocks (
-  id TEXT PRIMARY KEY ,
+  id TEXT PRIMARY KEY,
   doctor_id TEXT REFERENCES doctors(id) ON DELETE CASCADE,
-  block_range tstzrange NOT NULL,
+  starts_at DATETIME NOT NULL,
+  ends_at DATETIME NOT NULL,
   reason text NOT NULL,
   deleted_at DATETIME,
   deleted_by TEXT,
@@ -301,6 +302,18 @@ CREATE TABLE IF NOT EXISTS audit_log (
   user_agent text,
   txid INTEGER,
   request_id text ,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  action TEXT NOT NULL,
+  resource TEXT,
+  resource_id TEXT,
+  details TEXT,
+  institution_id TEXT,
+  ip_address TEXT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

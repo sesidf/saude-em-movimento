@@ -49,7 +49,7 @@ export class DatabaseClient {
     }
   }
 
-  public async logAudit(params: {
+  public async logAudit(_params: {
     userId?: string | null;
     action: string;
     resource: string;
@@ -58,25 +58,7 @@ export class DatabaseClient {
     institutionId?: string | null;
     ipAddress?: string | null;
   }) {
-    try {
-      const id = crypto.randomUUID();
-      const sql = `
-        INSERT INTO audit_logs (
-          id, user_id, action, resource, resource_id, details, institution_id, ip_address, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-      `;
-      await this.run(sql, [
-        id,
-        params.userId || null,
-        params.action,
-        params.resource,
-        params.resourceId || null,
-        params.details ? JSON.stringify(params.details) : null,
-        params.institutionId || null,
-        params.ipAddress || null,
-      ]);
-    } catch (e) {
-      console.warn('[Audit Log Warning] Failed to insert audit entry:', e);
-    }
+    // Governança e auditoria desativadas a pedido do usuário (zero consumo de storage e I/O no D1)
+    return;
   }
 }
