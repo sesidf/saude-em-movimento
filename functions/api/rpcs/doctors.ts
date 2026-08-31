@@ -13,6 +13,18 @@ export const handleDoctorsRpc = async (env: any, functionName: string, params: a
     return { data: { success: true }, error: null };
   }
 
+  if (functionName === 'upsert_doctor') {
+    const payload = {
+      user_id: params.p_user_id,
+      doctor_id: params.p_doctor_id,
+      specialty_id: params.p_specialty_id,
+      professional_council: params.p_professional_council,
+      crm: params.p_crm
+    };
+    const data = await repo.upsertDoctor(payload);
+    return { data, error: null };
+  }
+
   if (functionName === 'list_specialties_catalog') {
     const data = await repo.listSpecialtiesCatalog(params.p_search);
     return { data, error: null };

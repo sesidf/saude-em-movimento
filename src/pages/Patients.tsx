@@ -395,8 +395,6 @@ const Patients = () => {
         tcle_accepted: true,
       };
 
-      console.log('Enviando payload para upsert:', payloadCompleto);
-
       const { error } = await chamarApiPost('/api/patients/upsert', payloadCompleto);
 
       if (error) throw new Error(error);

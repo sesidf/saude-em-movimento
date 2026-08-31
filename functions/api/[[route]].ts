@@ -738,8 +738,14 @@ app.post('/auth/reset-password', async (c) => {
 app.post('/admin-create-user', async (c) => {
   try {
     const body = await c.req.json();
-    const { email, password, full_name, phone, institution_id, role_id } = body;
+    const { email, password, full_name, phone, institution_id, role_id: explicit_role_id, role, crm, specialty_id, professional_council } = body;
     if (!email || !password || !full_name) return c.json({ data: null, error: 'email, password e full_name são obrigatórios' }, 400);
+
+    let role_id = explicit_role_id;
+    if (!role_id && role) {
+      const roleRow = await new BaseRepository(c.env.DB, '').queryFirst('SELECT id FROM roles WHERE key = ?', [role]);
+      if (roleRow) role_id = (roleRow as any).id;
+    }
     // Verifica se já existe
     const existing = await new BaseRepository(c.env.DB, '').queryFirst('SELECT id FROM users WHERE email = ?', [email]);
     if (existing) return c.json({ data: null, error: 'Email já cadastrado' }, 409);
@@ -750,11 +756,19 @@ app.post('/admin-create-user', async (c) => {
     ).bind(userId, email, full_name, phone || null, hashedPwd, 'active', institution_id || null).run();
     // Vincula à instituição
     if (institution_id) {
-      await new BaseRepository(c.env.DB, '').execute('INSERT INTO user_institutions (id, user_id, institution_id) VALUES (lower(hex(randomblob(16))), ?, ?)', [userId, institution_id]);
+      await new BaseRepository(c.env.DB, '').execute('INSERT INTO user_institutions (user_id, institution_id) VALUES (?, ?)', [userId, institution_id]);
     }
     // Atribui role
     if (role_id) {
       await new BaseRepository(c.env.DB, '').execute('INSERT INTO user_roles (id, user_id, role_id, institution_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?)', [userId, role_id, institution_id || null]);
+    }
+    // Se for médico, cria o registro na tabela doctors
+    if (role === 'medico' || crm) {
+      const doctorId = crypto.randomUUID();
+      await new BaseRepository(c.env.DB, '').execute(
+        'INSERT INTO doctors (id, user_id, specialty_id, professional_council, crm) VALUES (?, ?, ?, ?, ?)',
+        [doctorId, userId, specialty_id || null, professional_council || 'CRM', crm || '00']
+      );
     }
     // Registra na tabela de auditoria
     const payload = c.get('jwtPayload') as any;
@@ -1093,7 +1107,7 @@ app.post('/rpc/:functionName', async (c) => {
     }
 
     // Módulo: Profissionais e Especialidades
-    const doctorsRpcs = ['list_doctors_catalog', 'set_doctor_active', 'list_specialties_catalog', 'upsert_specialty', 'set_specialty_active'];
+    const doctorsRpcs = ['list_doctors_catalog', 'set_doctor_active', 'list_specialties_catalog', 'upsert_specialty', 'set_specialty_active', 'upsert_doctor'];
     if (doctorsRpcs.includes(functionName)) {
       const result = await handleDoctorsRpc(env, functionName, params);
       return c.json(result);

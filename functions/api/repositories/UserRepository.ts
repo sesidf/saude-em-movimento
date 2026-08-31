@@ -55,10 +55,10 @@ export class UserRepository extends BaseRepository {
     if (action === 'remove') {
       await this.execute("DELETE FROM user_institutions WHERE user_id = ? AND institution_id = ?", [userId, institutionId]);
     } else {
-      const existing = await this.queryFirst("SELECT id FROM user_institutions WHERE user_id = ? AND institution_id = ?", [userId, institutionId]);
+      const existing = await this.queryFirst("SELECT user_id FROM user_institutions WHERE user_id = ? AND institution_id = ?", [userId, institutionId]);
       if (!existing) {
         await this.execute(
-          "INSERT INTO user_institutions (id, user_id, institution_id) VALUES (lower(hex(randomblob(16))), ?, ?)",
+          "INSERT INTO user_institutions (user_id, institution_id) VALUES (?, ?)",
           [userId, institutionId]
         );
       }
@@ -71,7 +71,7 @@ export class UserRepository extends BaseRepository {
     if (Array.isArray(institutionIds)) {
       for (const instId of institutionIds) {
         await this.execute(
-          "INSERT INTO user_institutions (id, user_id, institution_id) VALUES (lower(hex(randomblob(16))), ?, ?)",
+          "INSERT INTO user_institutions (user_id, institution_id) VALUES (?, ?)",
           [userId, instId]
         );
       }

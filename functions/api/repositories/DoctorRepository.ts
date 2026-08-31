@@ -7,7 +7,7 @@ export class DoctorRepository extends BaseRepository {
 
   public async listDoctorsCatalog(search?: string | null) {
     let sql = `
-      SELECT d.*, u.full_name as user_full_name, u.email 
+      SELECT d.*, u.full_name, u.email 
       FROM doctors d 
       LEFT JOIN users u ON d.user_id = u.id
     `;
@@ -38,6 +38,37 @@ export class DoctorRepository extends BaseRepository {
     sql += " ORDER BY name ASC";
     
     return this.query(sql, bindParams);
+  }
+
+  public async upsertDoctor(payload: any) {
+    if (!payload || !payload.doctor_id || !payload.user_id) throw new Error('Invalid payload');
+    
+    const existing = await this.queryFirst("SELECT id FROM doctors WHERE id = ?", [payload.doctor_id]);
+    
+    if (existing) {
+      await this.execute(
+        "UPDATE doctors SET specialty_id = ?, professional_council = ?, crm = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [
+          payload.specialty_id || null,
+          payload.professional_council || 'CRM',
+          payload.crm || '',
+          payload.doctor_id
+        ]
+      );
+    } else {
+      await this.execute(
+        "INSERT INTO doctors (id, user_id, specialty_id, professional_council, crm) VALUES (?, ?, ?, ?, ?)",
+        [
+          payload.doctor_id,
+          payload.user_id,
+          payload.specialty_id || null,
+          payload.professional_council || 'CRM',
+          payload.crm || ''
+        ]
+      );
+    }
+    
+    return { success: true };
   }
 
   public async upsertSpecialty(payload: any) {
